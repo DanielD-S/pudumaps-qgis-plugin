@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.1.0
+version=0.2.0
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,14 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.1.0 (2026-04-23)
+changelog=0.2.0 (2026-04-23)
+  * Open a Pudumaps project as QGIS layers (pull)
+  * Projects dialog with list, search-by-sort, double-click to open
+  * Automatic layer group "Pudumaps: <project>" in layer tree
+  * Basic default styling (green) applied to each loaded layer
+  * Remote project/layer ids stamped as custom properties for future sync
+
+ 0.1.0 (2026-04-23)
   * Initial release
   * Settings dialog with encrypted API key storage via QgsAuthManager
   * Connection test against /v1/projects

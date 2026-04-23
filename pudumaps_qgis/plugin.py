@@ -52,12 +52,32 @@ class PudumapsPlugin:
         dlg.exec_()
 
     def _open_projects(self) -> None:
-        # Fase 2 — proximamente
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "Pudumaps",
-            "Abrir proyecto estará disponible en la próxima versión (Fase 2).",
-        )
+        from .api_client import PudumapsClient
+        from .auth import load_credentials
+        from .dialogs.projects_dialog import ProjectsDialog
+
+        creds = load_credentials()
+        if not creds:
+            QMessageBox.warning(
+                self.iface.mainWindow(),
+                "Pudumaps",
+                "No hay credenciales configuradas. Abre Configuración primero.",
+            )
+            self._open_settings()
+            return
+
+        try:
+            client = PudumapsClient(api_key=creds.api_key, base_url=creds.base_url)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(
+                self.iface.mainWindow(),
+                "Pudumaps",
+                f"No se pudo crear el cliente: {e}",
+            )
+            return
+
+        dlg = ProjectsDialog(client, self.iface.mainWindow())
+        dlg.exec_()
 
     def _sync_current(self) -> None:
         # Fase 4 — proximamente
