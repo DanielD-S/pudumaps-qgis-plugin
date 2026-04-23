@@ -157,12 +157,61 @@ class PudumapsPlugin:
         dlg.exec_()
 
     def _sync_current(self) -> None:
-        # Fase 4 — proximamente
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "Pudumaps",
-            "Sincronizar estará disponible en la próxima versión (Fase 4).",
-        )
+        """Sync the Pudumaps project referenced by the active layer (or
+        the first Pudumaps-linked layer in the current QGIS project)."""
+        from qgis.core import QgsProject
+
+        from .api_client import PudumapsClient
+        from .auth import load_credentials
+        from .dialogs.sync_dialog import SyncDialog
+        from .project_loader import PROP_PROJECT_ID, PROP_PROJECT_NAME
+
+        # Find a Pudumaps-linked layer to discover the project id/name
+        project_id = project_name = ""
+        active = self.iface.activeLayer()
+        if active is not None:
+            project_id = active.customProperty(PROP_PROJECT_ID, "") or ""
+            project_name = active.customProperty(PROP_PROJECT_NAME, "") or ""
+        if not project_id:
+            for layer in QgsProject.instance().mapLayers().values():
+                pid = layer.customProperty(PROP_PROJECT_ID, "")
+                if pid:
+                    project_id = pid
+                    project_name = (
+                        layer.customProperty(PROP_PROJECT_NAME, "") or "(sin nombre)"
+                    )
+                    break
+
+        if not project_id:
+            QMessageBox.information(
+                self.iface.mainWindow(),
+                "Pudumaps",
+                "No hay ninguna capa vinculada a un proyecto Pudumaps. "
+                "Abre un proyecto primero o sube una capa.",
+            )
+            return
+
+        creds = load_credentials()
+        if not creds:
+            QMessageBox.warning(
+                self.iface.mainWindow(),
+                "Pudumaps",
+                "Configura tu API key primero.",
+            )
+            self._open_settings()
+            return
+
+        try:
+            client = PudumapsClient(api_key=creds.api_key, base_url=creds.base_url)
+        except Exception as e:  # noqa: BLE001
+            QMessageBox.critical(
+                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {e}"
+            )
+            return
+
+        dlg = SyncDialog(client, project_id, project_name or "(sin nombre)",
+                         self.iface.mainWindow())
+        dlg.exec_()
 
     # ── Helpers ──────────────────────────────────────────────────────────
 

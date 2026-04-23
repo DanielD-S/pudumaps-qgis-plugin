@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] — 2026-04-23
+
+### Added
+- **Bidirectional sync** with per-layer conflict detection. The sync
+  dialog shows every layer of the project and its current state:
+  - `unchanged` — both sides identical (skip)
+  - `local_only` — pushable with one click
+  - `remote_only` — pullable with one click
+  - `conflict` — both sides changed since last sync (user picks which wins)
+  - `new_local` — local layer with no remote id yet (uploads as new)
+  - `deleted_remote` — layer gone from server (keep local or delete)
+- `sync_manager.py` with `canonical_hash()` (SHA-256 of canonical JSON)
+  and a pure `classify()` state-machine function.
+- `pudumaps/last_hash` custom property persisted on each successful
+  pull or push so future syncs have a reference point.
+- **Dedup on pull**: if a layer with the same remote `layer_id` already
+  exists in the QGIS project, its features are refreshed in place
+  instead of creating a duplicate. Solves the two-layers-one-remote
+  problem introduced in v0.3 when users pushed then re-opened the project.
+
+### Changed
+- "Sincronizar" toolbar action now opens the sync dialog (was a stub).
+- Pull stamps `pudumaps/last_hash` on every loaded layer.
+
 ## [0.3.0] — 2026-04-23
 
 ### Added

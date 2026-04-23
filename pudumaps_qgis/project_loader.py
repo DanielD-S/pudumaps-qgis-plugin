@@ -178,19 +178,36 @@ def load_project(
 ) -> LoadResult:
     """Pull all layers of a Pudumaps project into the active QGIS project.
 
+    If a layer with matching `pudumaps/layer_id` already exists in the
+    project, it is reused (features replaced) instead of creating a
+    duplicate. This avoids two-layers-pointing-to-one-remote when the
+    user has just pushed a layer and then opens the same project.
+
     `progress_cb(done, total, current_name)` is called before each layer
     fetch. Exceptions per-layer are caught so one bad layer doesn't abort
     the whole import.
     """
+    import hashlib
+    import json as _json
+
     summaries = client.list_layers(project_id)
     total = len(summaries)
     project = QgsProject.instance()
     group_name = f"Pudumaps: {project_name}"
     root = project.layerTreeRoot()
 
-    # Reuse an existing group with the same name, or create a new one
     existing_group = root.findGroup(group_name)
     group = existing_group or root.insertGroup(0, group_name)
+
+    # Build a lookup of already-present layers by remote id so we can
+    # dedupe (Fase 4 safeguard)
+    existing_by_remote_id: dict[str, QgsVectorLayer] = {}
+    for layer in project.mapLayers().values():
+        if not isinstance(layer, QgsVectorLayer):
+            continue
+        rid = layer.customProperty(PROP_LAYER_ID, "")
+        if rid:
+            existing_by_remote_id[rid] = layer
 
     loaded = 0
     failed: list[tuple[str, str]] = []
@@ -201,6 +218,22 @@ def load_project(
         try:
             full = client.get_layer(summary.id)
             geojson = full.get("geojson") or {"type": "FeatureCollection", "features": []}
+
+            # Compute the canonical hash once and reuse
+            hash_ = hashlib.sha256(
+                _json.dumps(geojson, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
+
+            existing = existing_by_remote_id.get(summary.id)
+            if existing is not None:
+                # Refresh the existing layer's features in-place and
+                # re-stamp hashes; no new duplicate layer.
+                from .sync_manager import stamp_hash  # lazy to avoid cycle
+                _replace_features(existing, geojson)
+                stamp_hash(existing, hash_)
+                loaded += 1
+                continue
+
             layer = geojson_to_layer(
                 geojson,
                 name=summary.name,
@@ -208,6 +241,7 @@ def load_project(
                 remote_project_id=project_id,
                 remote_project_name=project_name,
             )
+            layer.setCustomProperty(PROP_LAST_HASH, hash_)
             project.addMapLayer(layer, addToLegend=False)
             group.addLayer(layer)
             loaded += 1
@@ -263,6 +297,19 @@ def _safe_field_name(name: str) -> str:
     """QGIS memory provider needs simple field names without special chars."""
     safe = "".join(c if c.isalnum() or c == "_" else "_" for c in (name or ""))
     return safe or "field"
+
+
+def _replace_features(layer: QgsVectorLayer, geojson: dict[str, Any]) -> None:
+    """Replace all features of an existing memory-backed layer with
+    features from a fresh GeoJSON. Used by pull's dedup path."""
+    src = geojson_to_layer(geojson, name="__dedup_tmp__")
+    pr = layer.dataProvider()
+    ids = [f.id() for f in layer.getFeatures()]
+    if ids:
+        pr.deleteFeatures(ids)
+    pr.addFeatures(list(src.getFeatures()))
+    layer.updateExtents()
+    layer.triggerRepaint()
 
 
 def _field_type_for(qvariant_type: int) -> str:
