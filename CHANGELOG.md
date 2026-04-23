@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] — 2026-04-23
+
+### Added
+- **Upload a QGIS layer to Pudumaps (push)** via two entry points:
+  - Right-click on a vector layer in the Layers Panel → *Subir a Pudumaps…*
+  - Menu/toolbar action *Subir capa activa a Pudumaps…*
+- `UploadLayerDialog`: dropdown of user's projects + *Nuevo…* button to
+  create a project inline without leaving QGIS
+- `exporter.layer_to_geojson()`: serializes a `QgsVectorLayer` to a
+  GeoJSON FeatureCollection with automatic reprojection to EPSG:4326
+  when the source CRS is different (PSAD56, UTM19S, etc.)
+- Pre-upload validation: 10 MB body cap (matches API limit),
+  20,000-feature max (matches `validateGeoJSON` limit)
+- Smart dispatch: layers that originated from a Pudumaps pull (detected
+  via the `pudumaps/layer_id` custom property) are **updated in place**
+  with PATCH instead of duplicating via POST. First-time uploads stamp
+  the returned id on the layer so the next upload becomes an update.
+
+### Changed
+- Menu/toolbar now has four actions (previously three) — the new
+  upload action sits between *Abrir proyecto* and *Sincronizar*.
+
 ## [0.2.1] — 2026-04-23
 
 ### Fixed

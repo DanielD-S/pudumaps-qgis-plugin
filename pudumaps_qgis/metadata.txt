@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.2.1
+version=0.3.0
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,17 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.2.1 (2026-04-23)
+changelog=0.3.0 (2026-04-23)
+  * Subir capas QGIS a Pudumaps (push)
+  * Menú contextual: click derecho en capa vectorial → Subir a Pudumaps
+  * Acción del menú: Subir capa activa a Pudumaps
+  * Diálogo con dropdown de proyectos + creación inline de proyecto nuevo
+  * Reproyección automática a EPSG:4326 desde cualquier CRS soportado
+  * Pre-validación de tamaño (10 MB) y número de features (20k)
+  * Smart dispatch: capas que vinieron del pull se actualizan in-place
+    (PATCH) en vez de duplicarse (POST)
+
+ 0.2.1 (2026-04-23)
   * Fix: polygon/multipolygon layers no renderizaban — OGR promueve a
     Multi* y el memory layer Polygon rechazaba las features. Ahora se
     usa el wkbType real de OGR.
