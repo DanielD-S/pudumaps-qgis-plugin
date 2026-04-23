@@ -20,6 +20,8 @@ from qgis.PyQt.QtWidgets import (
 
 from ..api_client import Project, PudumapsClient, PudumapsError
 from ..project_loader import load_project
+from ..styles import apply_pudumaps_style
+from ..ui_helpers import build_header, separator
 
 
 class ProjectsDialog(QDialog):
@@ -29,7 +31,8 @@ class ProjectsDialog(QDialog):
         self.projects: list[Project] = []
 
         self.setWindowTitle("Pudumaps — Abrir proyecto")
-        self.setMinimumSize(640, 420)
+        self.setMinimumSize(680, 460)
+        apply_pudumaps_style(self)
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Nombre", "Descripción", "Creado"])
@@ -60,6 +63,13 @@ class ProjectsDialog(QDialog):
         self.buttons.addButton(QDialogButtonBox.Close).clicked.connect(self.reject)
 
         layout = QVBoxLayout()
+        layout.addWidget(
+            build_header(
+                "Abrir proyecto",
+                "Selecciona un proyecto de Pudumaps para cargar sus capas en QGIS.",
+            )
+        )
+        layout.addWidget(separator())
         layout.addWidget(self.table)
         row = QVBoxLayout()
         row.addWidget(self.refresh_btn)

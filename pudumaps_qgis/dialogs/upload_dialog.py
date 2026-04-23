@@ -22,6 +22,8 @@ from qgis.PyQt.QtWidgets import (
 from ..api_client import Project, PudumapsClient, PudumapsError
 from ..exporter import ExportError, format_size, layer_to_geojson
 from ..project_loader import PROP_LAYER_ID, PROP_PROJECT_ID, PROP_PROJECT_NAME
+from ..styles import apply_pudumaps_style
+from ..ui_helpers import build_header, separator
 
 
 class UploadLayerDialog(QDialog):
@@ -43,7 +45,8 @@ class UploadLayerDialog(QDialog):
         )
 
         self.setWindowTitle("Pudumaps — Subir capa")
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
+        apply_pudumaps_style(self)
 
         # Form widgets
         self.project_combo = QComboBox()
@@ -84,7 +87,15 @@ class UploadLayerDialog(QDialog):
         project_row.addWidget(self.new_project_btn)
         form.addRow("Proyecto destino:", project_row)
 
+        header_subtitle = (
+            "Actualiza en Pudumaps la capa ya enlazada."
+            if self.existing_remote_id
+            else "Sube esta capa a un proyecto existente o crea uno nuevo."
+        )
+
         main = QVBoxLayout()
+        main.addWidget(build_header("Subir capa", header_subtitle))
+        main.addWidget(separator())
         main.addLayout(form)
         main.addWidget(self.summary_label)
         main.addStretch()

@@ -6,7 +6,12 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
 PLUGIN_DIR = Path(__file__).resolve().parent
-ICON_PATH = str(PLUGIN_DIR / "icons" / "pudumaps.svg")
+ICONS_DIR = PLUGIN_DIR / "icons"
+ICON_PATH = str(ICONS_DIR / "pudumaps-logo.png")  # main brand (menu entries)
+ICON_SETTINGS = str(ICONS_DIR / "settings.svg")
+ICON_DOWNLOAD = str(ICONS_DIR / "download.svg")
+ICON_UPLOAD = str(ICONS_DIR / "upload.svg")
+ICON_SYNC = str(ICONS_DIR / "sync.svg")
 
 
 class PudumapsPlugin:
@@ -25,22 +30,22 @@ class PudumapsPlugin:
         self._add_action(
             "Configuración…",
             self._open_settings,
-            enabled=True,
+            icon_path=ICON_SETTINGS,
         )
         self._add_action(
             "Abrir proyecto…",
             self._open_projects,
-            enabled=True,
+            icon_path=ICON_DOWNLOAD,
         )
         self._add_action(
             "Subir capa activa a Pudumaps…",
             self._upload_active_layer,
-            enabled=True,
+            icon_path=ICON_UPLOAD,
         )
         self._add_action(
             "Sincronizar",
             self._sync_current,
-            enabled=True,
+            icon_path=ICON_SYNC,
         )
         # Context menu on the Layers Panel — "right-click on layer →
         # Subir a Pudumaps…". Uses QgsMapLayer.LayerType.VectorLayer from
@@ -48,7 +53,7 @@ class PudumapsPlugin:
         from qgis.core import QgsMapLayer
 
         self._context_action = QAction(
-            QIcon(ICON_PATH), "Subir a Pudumaps…", self.iface.mainWindow()
+            QIcon(ICON_UPLOAD), "Subir a Pudumaps…", self.iface.mainWindow()
         )
         self._context_action.triggered.connect(self._upload_from_context)
         self.iface.addCustomActionForLayerType(
@@ -215,8 +220,14 @@ class PudumapsPlugin:
 
     # ── Helpers ──────────────────────────────────────────────────────────
 
-    def _add_action(self, text: str, callback, enabled: bool = True) -> QAction:
-        icon = QIcon(ICON_PATH)
+    def _add_action(
+        self,
+        text: str,
+        callback,
+        enabled: bool = True,
+        icon_path: str | None = None,
+    ) -> QAction:
+        icon = QIcon(icon_path or ICON_PATH)
         action = QAction(icon, text, self.iface.mainWindow())
         action.triggered.connect(callback)
         action.setEnabled(enabled)

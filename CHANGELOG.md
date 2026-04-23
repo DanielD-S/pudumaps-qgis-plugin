@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] — 2026-04-23
+
+### Added
+- **Logo oficial Pudumaps** (el pudu con el mapa) integrado como icono
+  del plugin en el administrador de QGIS y como header branded en cada
+  diálogo del plugin.
+- **Iconos SVG específicos por acción** en la toolbar/menú:
+  - `settings.svg` — engranaje para Configuración
+  - `download.svg` — flecha hacia abajo para Abrir proyecto
+  - `upload.svg` — flecha hacia arriba para Subir capa
+  - `sync.svg` — flechas circulares para Sincronizar
+- `styles.py` — stylesheet QSS con paleta Pudumaps (`#22c55e` verde)
+  aplicada a botones primarios, tablas, progress bars y focus rings.
+- `ui_helpers.py` — helpers reutilizables para header branded y para
+  toast notifications nativas usando `iface.messageBar()`.
+- Headers consistentes con logo + título + subtítulo en los 4 diálogos
+  principales.
+
+### Changed
+- Todos los diálogos (settings, projects, upload, sync) ahora montan
+  `apply_pudumaps_style()` y el header branded.
+- `metadata.txt` ahora referencia `icons/pudumaps-logo.png` como icono
+  principal del plugin (reemplaza el SVG genérico verde).
+
 ## [0.4.0] — 2026-04-23
 
 ### Added

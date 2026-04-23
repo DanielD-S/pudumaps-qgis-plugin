@@ -30,6 +30,7 @@ from ..project_loader import (
     apply_default_style,
     geojson_to_layer,
 )
+from ..styles import apply_pudumaps_style
 from ..sync_manager import (
     LayerDiff,
     LayerState,
@@ -39,6 +40,7 @@ from ..sync_manager import (
     diff_project,
     stamp_hash,
 )
+from ..ui_helpers import build_header, separator
 
 STATE_COLOR = {
     LayerState.UNCHANGED: ("Sin cambios", "#888"),
@@ -65,7 +67,8 @@ class SyncDialog(QDialog):
         self.diffs: list[LayerDiff] = []
 
         self.setWindowTitle(f"Pudumaps — Sincronizar «{project_name}»")
-        self.setMinimumSize(760, 460)
+        self.setMinimumSize(820, 500)
+        apply_pudumaps_style(self)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Capa", "Estado", "Acción", "Detalle"])
@@ -92,6 +95,14 @@ class SyncDialog(QDialog):
         self.buttons.addButton(QDialogButtonBox.Close).clicked.connect(self.reject)
 
         layout = QVBoxLayout()
+        layout.addWidget(
+            build_header(
+                "Sincronizar proyecto",
+                f"«{project_name}» — revisa los cambios locales y remotos "
+                "antes de aplicar.",
+            )
+        )
+        layout.addWidget(separator())
         layout.addWidget(self.table)
         layout.addWidget(self.progress)
         layout.addWidget(self.status_label)

@@ -21,13 +21,16 @@ from qgis.PyQt.QtWidgets import (
 
 from ..api_client import DEFAULT_BASE_URL, PudumapsClient, PudumapsError
 from ..auth import clear_credentials, load_credentials, save_credentials
+from ..styles import apply_pudumaps_style
+from ..ui_helpers import build_header, separator
 
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Pudumaps — Configuración")
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(540)
+        apply_pudumaps_style(self)
 
         # Form
         self.api_key_edit = QLineEdit()
@@ -72,6 +75,13 @@ class SettingsDialog(QDialog):
         hint.setWordWrap(True)
 
         main = QVBoxLayout()
+        main.addWidget(
+            build_header(
+                "Configuración",
+                "Conecta tu cuenta Pudumaps para pull, push y sync de proyectos.",
+            )
+        )
+        main.addWidget(separator())
         main.addLayout(form)
         main.addLayout(btn_row)
         main.addWidget(self.status_label)
