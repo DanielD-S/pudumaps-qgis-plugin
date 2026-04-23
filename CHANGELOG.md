@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] — 2026-04-23
+
+### Fixed
+- Polygon/MultiPolygon layers now render correctly. Previously OGR would
+  promote single-geometry features to their Multi- variant when reading
+  GeoJSON, and the memory layer created with the inferred `Polygon` URI
+  would silently reject `MultiPolygon` features on `addFeatures()`,
+  resulting in empty-looking layers in QGIS. Now the memory layer uses
+  OGR's actual `wkbType` and inherits the CRS from the OGR layer.
+- Fallback to OGR-backed layer when the memory provider rejects the
+  features anyway (last-resort robustness).
+
+### Added
+- Auto-zoom to the combined extent of the loaded group after pull, so
+  layers are immediately visible even when they live far from the
+  current map viewport (e.g. Los Ríos region while the canvas was
+  showing Europe).
+
 ## [0.2.0] — 2026-04-23
 
 ### Added

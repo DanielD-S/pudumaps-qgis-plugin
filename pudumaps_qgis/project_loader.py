@@ -20,6 +20,7 @@ from qgis.core import (
     QgsProject,
     QgsSingleSymbolRenderer,
     QgsVectorLayer,
+    QgsWkbTypes,
 )
 
 from .api_client import PudumapsClient, PudumapsError
@@ -127,7 +128,15 @@ def geojson_to_layer(
     else:
         # Copy features from OGR layer into an in-memory layer so we own
         # its lifecycle (and can later dirty-track / sync).
-        uri = f"{geom_type}?crs=EPSG:4326"
+        #
+        # Use OGR's actual wkbType (not our inferred geom_type) because
+        # OGR promotes single geometries to their Multi- variant when
+        # loading GeoJSON, and a memory layer created as "Polygon" will
+        # silently reject MultiPolygon features on addFeatures().
+        wkb_type = ogr_layer.wkbType()
+        geom_name = QgsWkbTypes.displayString(wkb_type) or geom_type
+        crs_authid = ogr_layer.crs().authid() or "EPSG:4326"
+        uri = f"{geom_name}?crs={crs_authid}"
         fields_uri_parts = [
             f"field={_safe_field_name(f.name())}:{_field_type_for(f.type())}"
             for f in ogr_layer.fields()
@@ -135,9 +144,18 @@ def geojson_to_layer(
         if fields_uri_parts:
             uri += "&" + "&".join(fields_uri_parts)
         layer = QgsVectorLayer(uri, name, "memory")
-        pr = layer.dataProvider()
-        pr.addFeatures(list(ogr_layer.getFeatures()))
-        layer.updateExtents()
+        if not layer.isValid():
+            # Memory provider rejected the URI — last resort, use OGR layer
+            # directly. The tempfile stays on disk for the QGIS session.
+            layer = ogr_layer
+        else:
+            pr = layer.dataProvider()
+            ok, _added = pr.addFeatures(list(ogr_layer.getFeatures()))
+            if not ok or layer.featureCount() == 0:
+                # addFeatures rejected silently — fall back to OGR layer.
+                layer = ogr_layer
+            else:
+                layer.updateExtents()
 
     # Stamp remote metadata on the layer for future push/sync
     if remote_layer_id:
@@ -201,7 +219,41 @@ def load_project(
     if progress_cb:
         progress_cb(total, total, "")
 
+    _zoom_to_group(group)
+
     return LoadResult(loaded=loaded, failed=failed, group_name=group_name)
+
+
+def _zoom_to_group(group) -> None:
+    """Compute combined extent of all layers in the group and zoom the
+    active map canvas to it. Best-effort — failures are swallowed."""
+    try:
+        from qgis.core import QgsRectangle
+        from qgis.utils import iface  # type: ignore
+
+        combined: QgsRectangle | None = None
+        for child in group.findLayers():
+            layer = child.layer()
+            if layer is None or not layer.isValid():
+                continue
+            if layer.featureCount() == 0:
+                continue
+            extent = layer.extent()
+            if extent.isNull() or extent.isEmpty():
+                continue
+            if combined is None:
+                combined = QgsRectangle(extent)
+            else:
+                combined.combineExtentWith(extent)
+
+        if combined is not None and iface is not None:
+            canvas = iface.mapCanvas()
+            # Small buffer so features don't touch the edges
+            combined.scale(1.1)
+            canvas.setExtent(combined)
+            canvas.refresh()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

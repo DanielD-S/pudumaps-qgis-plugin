@@ -29,6 +29,8 @@ def _stub_qgis_core() -> None:
         "QgsProject",
         "QgsSingleSymbolRenderer",
         "QgsVectorLayer",
+        "QgsWkbTypes",
+        "QgsRectangle",
     ):
         setattr(core, name, _Stub)
 
