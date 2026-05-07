@@ -2,6 +2,18 @@
 
 Uses only stdlib + `requests` (already bundled with QGIS 3.x on all platforms).
 Retries on 429 respecting X-RateLimit-Reset, single network layer, typed errors.
+
+Security notes (audit 2026-05-07):
+- Base URL is validated via `url_validator.validate_base_url`: HTTPS-only
+  (loopback HTTP allowed for dev). Rechazamos `http://evil.example/...` que
+  haría leak de la API key en cleartext (H2 ALTO).
+- TLS verification: `requests.Session` con `verify=True` por default. NO
+  desactivamos TLS en ningún path. NO hay certificate pinning intencional
+  (depende del CA bundle de QGIS/Python — aceptable para distribución
+  pública).
+- Response body size cap: `MAX_RESPONSE_BYTES` rechaza payloads gigantes
+  antes de pasarlos a `json.loads` (H4 MEDIO: prevenir OOM si la API o
+  un MITM responde con 500 MB de basura).
 """
 
 from __future__ import annotations
@@ -12,9 +24,18 @@ from typing import Any
 
 import requests
 
+from ._version import get_version
+from .url_validator import validate_base_url
+
 DEFAULT_BASE_URL = "https://tyftyoexdxrjvxjbdyux.supabase.co/functions/v1/api-v1"
-USER_AGENT = "pudumaps-qgis/0.1.0"
+USER_AGENT = f"pudumaps-qgis/{get_version()}"
 DEFAULT_TIMEOUT = 20  # seconds
+
+# Cap defensivo del body de la respuesta. La API de Pudumaps puede
+# devolver capas grandes en GET /v1/layers/{id}, pero el plugin valida
+# 10 MB en upload — por simetría aceptamos hasta 50 MB en download
+# (margen para metadata + reproyección del backend).
+MAX_RESPONSE_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 class PudumapsError(Exception):
@@ -71,7 +92,12 @@ class PudumapsClient:
     ):
         if not api_key:
             raise PudumapsError("API key required")
-        self.base_url = base_url.rstrip("/")
+        # Defense-in-depth: rechazamos URLs no-HTTPS aunque vengan de
+        # QSettings (donde un atacante con acceso al disco las podría
+        # reescribir a http://). El SettingsDialog también valida en UI
+        # — esta validación es la red de seguridad final.
+        validated = validate_base_url(base_url)
+        self.base_url = validated.rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
         self._session = requests.Session()
@@ -151,8 +177,11 @@ class PudumapsClient:
     ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         try:
+            # stream=True permite chequear Content-Length antes de
+            # buffear todo el body. Sin esto, json() carga TODO en
+            # memoria sin importar el tamaño.
             resp = self._session.request(
-                method, url, json=json, timeout=self.timeout
+                method, url, json=json, timeout=self.timeout, stream=True
             )
         except requests.RequestException as e:
             raise PudumapsError(f"Network error: {e}") from e
@@ -167,27 +196,74 @@ class PudumapsClient:
                     wait = min(wait, 60)  # cap at 1 min per retry
                 except ValueError:
                     pass
+            resp.close()
             time.sleep(wait)
             return self._request(
                 method, path, json=json, _retries_left=_retries_left - 1
             )
 
-        if not 200 <= resp.status_code < 300:
+        # Cap defensivo del body. Si el server (o un MITM) declara un
+        # Content-Length absurdo, abortamos antes de leer.
+        cl = resp.headers.get("Content-Length")
+        if cl is not None:
             try:
-                body = resp.json()
+                if int(cl) > MAX_RESPONSE_BYTES:
+                    resp.close()
+                    raise PudumapsError(
+                        f"Response too large: {cl} bytes "
+                        f"(max {MAX_RESPONSE_BYTES})"
+                    )
             except ValueError:
-                body = {}
-            err = body.get("error") or {}
+                pass  # Content-Length no numérico — caemos al cap por bytes leídos
+
+        # Leer con cap real, también para chunked sin Content-Length.
+        try:
+            body_bytes = b""
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    body_bytes += chunk
+                    if len(body_bytes) > MAX_RESPONSE_BYTES:
+                        resp.close()
+                        raise PudumapsError(
+                            f"Response exceeded {MAX_RESPONSE_BYTES} bytes"
+                        )
+        except requests.RequestException as e:
+            raise PudumapsError(f"Network error reading response: {e}") from e
+
+        if not 200 <= resp.status_code < 300:
+            err: dict[str, Any] = {}
+            if body_bytes:
+                try:
+                    parsed = _safe_json_loads(body_bytes)
+                    err = parsed.get("error") or {}
+                except (ValueError, PudumapsError):
+                    err = {}
             raise PudumapsError(
                 err.get("message") or f"HTTP {resp.status_code}",
                 status=resp.status_code,
                 code=err.get("code"),
             )
 
-        if resp.status_code == 204 or not resp.content:
+        if resp.status_code == 204 or not body_bytes:
             return {}
 
-        try:
-            return resp.json()
-        except ValueError as e:
-            raise PudumapsError("Invalid JSON response") from e
+        return _safe_json_loads(body_bytes)
+
+
+def _safe_json_loads(body_bytes: bytes) -> dict[str, Any]:
+    """Parsea JSON garantizando dict en la raíz.
+
+    Audit H4 (2026-05-07): el caller asumía dict pero `json.loads`
+    acepta también arrays/strings/numbers/booleans/null en la raíz. Si
+    la API devolviera algo no-objeto por error o ataque, el código
+    siguiente con `.get(...)` crashearía con AttributeError opaco.
+    """
+    import json as _json
+
+    try:
+        parsed = _json.loads(body_bytes.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        raise PudumapsError("Invalid JSON response") from e
+    if not isinstance(parsed, dict):
+        raise PudumapsError("Unexpected JSON response shape")
+    return parsed

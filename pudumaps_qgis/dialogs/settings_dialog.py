@@ -20,9 +20,17 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..api_client import DEFAULT_BASE_URL, PudumapsClient, PudumapsError
-from ..auth import clear_credentials, load_credentials, save_credentials
+from ..auth import (
+    PlaintextStorageRefused,
+    clear_credentials,
+    is_encrypted_storage_available,
+    load_credentials,
+    save_credentials,
+)
+from ..error_utils import log_full_error, safe_error_message
 from ..styles import apply_pudumaps_style
 from ..ui_helpers import build_header, separator
+from ..url_validator import InvalidBaseUrlError, validate_base_url
 
 
 class SettingsDialog(QDialog):
@@ -112,12 +120,17 @@ class SettingsDialog(QDialog):
         if not api_key:
             self._set_status("Ingresa una API key primero.", ok=False)
             return
+        try:
+            base_url = validate_base_url(base_url)
+        except InvalidBaseUrlError as e:
+            self._set_status(safe_error_message(e), ok=False)
+            return
         self._set_status("Conectando…", ok=None)
         try:
             client = PudumapsClient(api_key=api_key, base_url=base_url)
             projects = client.list_projects()
         except PudumapsError as e:
-            msg = f"Error: {e}"
+            msg = f"Error: {safe_error_message(e)}"
             if e.status == 401:
                 msg += "\nKey inválida o revocada."
             elif e.status == 429:
@@ -125,7 +138,10 @@ class SettingsDialog(QDialog):
             self._set_status(msg, ok=False)
             return
         except Exception as e:  # noqa: BLE001
-            self._set_status(f"Error inesperado: {e}", ok=False)
+            log_full_error("settings_dialog._test_connection", e)
+            self._set_status(
+                f"Error inesperado: {safe_error_message(e)}", ok=False
+            )
             return
         self._set_status(
             f"✓ Conectado. {len(projects)} proyecto(s) disponible(s).", ok=True
@@ -136,14 +152,60 @@ class SettingsDialog(QDialog):
         if not api_key:
             QMessageBox.warning(self, "Pudumaps", "La API key es obligatoria.")
             return
+        # H2 ALTO: validamos HTTPS antes de guardar (evita persistir un
+        # http:// que después leakearía la key en cada request).
         try:
-            save_credentials(api_key, base_url)
+            base_url = validate_base_url(base_url)
+        except InvalidBaseUrlError as e:
+            QMessageBox.warning(self, "Pudumaps · URL inválida",
+                                safe_error_message(e))
+            return
+
+        # H1 ALTO: si QgsAuthManager no está listo, advertir explícitamente
+        # antes de caer al fallback plaintext de QSettings.
+        allow_plaintext = False
+        if not is_encrypted_storage_available():
+            allow_plaintext = self._confirm_plaintext_fallback()
+            if not allow_plaintext:
+                return
+
+        try:
+            save_credentials(
+                api_key, base_url,
+                allow_plaintext_fallback=allow_plaintext,
+            )
+        except PlaintextStorageRefused as e:
+            # No debería ocurrir porque ya pedimos confirmación, pero
+            # protege ante race con cambios del auth manager.
+            QMessageBox.warning(self, "Pudumaps", safe_error_message(e))
+            return
         except Exception as e:  # noqa: BLE001
+            log_full_error("settings_dialog._save_and_close", e)
             QMessageBox.critical(
-                self, "Pudumaps", f"No se pudo guardar la configuración:\n{e}"
+                self, "Pudumaps",
+                f"No se pudo guardar la configuración:\n{safe_error_message(e)}",
             )
             return
         self.accept()
+
+    def _confirm_plaintext_fallback(self) -> bool:
+        """Pregunta al user si acepta guardar la API key sin cifrar.
+
+        Returns True si confirmó, False si canceló.
+        """
+        reply = QMessageBox.warning(
+            self,
+            "Pudumaps · Almacenamiento sin cifrar",
+            "QGIS no tiene un master password configurado, así que la "
+            "API key se guardará en plaintext en QSettings.\n\n"
+            "Recomendado: cancela, abre QGIS → Configuración → "
+            "Opciones → Autenticación, configura un master password, "
+            "y vuelve a guardar.\n\n"
+            "¿Continuar guardando sin cifrar?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return reply == QMessageBox.Yes
 
     def _clear(self) -> None:
         confirmed = QMessageBox.question(
@@ -154,10 +216,20 @@ class SettingsDialog(QDialog):
         )
         if confirmed != QMessageBox.Yes:
             return
-        clear_credentials()
+        auth_cleared = clear_credentials()
         self.api_key_edit.clear()
         self.base_url_edit.setText(DEFAULT_BASE_URL)
-        self._set_status("Credenciales borradas.", ok=True)
+        if auth_cleared:
+            self._set_status("Credenciales borradas.", ok=True)
+        else:
+            # H8: aviso explícito si la entry cifrada no se pudo borrar.
+            self._set_status(
+                "Credenciales locales borradas. La entry cifrada en "
+                "QgsAuthManager no se pudo eliminar — abre QGIS → "
+                "Configuración → Opciones → Autenticación y borrala "
+                "manualmente (busca 'pudumaps-api').",
+                ok=False,
+            )
 
     def _set_status(self, text: str, ok: bool | None) -> None:
         color = (

@@ -19,6 +19,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..api_client import Project, PudumapsClient, PudumapsError
+from ..error_utils import log_full_error, safe_error_message
 from ..project_loader import load_project
 from ..styles import apply_pudumaps_style
 from ..ui_helpers import build_header, separator
@@ -89,7 +90,7 @@ class ProjectsDialog(QDialog):
         try:
             projects = self.client.list_projects()
         except PudumapsError as e:
-            self._set_status(f"Error: {e}", ok=False)
+            self._set_status(f"Error: {safe_error_message(e)}", ok=False)
             self.refresh_btn.setEnabled(True)
             return
         finally:
@@ -127,7 +128,9 @@ class ProjectsDialog(QDialog):
         try:
             layer_count = len(self.client.list_layers(project.id))
         except PudumapsError as e:
-            self._set_status(f"Error listando capas: {e}", ok=False)
+            self._set_status(
+                f"Error listando capas: {safe_error_message(e)}", ok=False
+            )
             return
 
         if layer_count == 0:
@@ -159,13 +162,16 @@ class ProjectsDialog(QDialog):
         try:
             result = load_project(self.client, project.id, project.name, progress_cb=cb)
         except PudumapsError as e:
-            self._set_status(f"Error: {e}", ok=False)
+            self._set_status(f"Error: {safe_error_message(e)}", ok=False)
             self.progress.setVisible(False)
             self.buttons.setEnabled(True)
             self.refresh_btn.setEnabled(True)
             return
         except Exception as e:  # noqa: BLE001
-            self._set_status(f"Error inesperado: {e}", ok=False)
+            log_full_error("projects_dialog._load_project_with_progress", e)
+            self._set_status(
+                f"Error inesperado: {safe_error_message(e)}", ok=False
+            )
             self.progress.setVisible(False)
             self.buttons.setEnabled(True)
             self.refresh_btn.setEnabled(True)

@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.5.0
+version=0.6.0
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,28 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.5.0 (2026-04-23)
+changelog=0.6.0 (2026-05-07) — Security hardening (audit 2026-05-07)
+  * H1 ALTO: prompt explícito antes de degradar a almacenamiento
+    plaintext de QSettings cuando QgsAuthManager no tiene master
+    password. Antes el fallback era silencioso.
+  * H2 ALTO: rechazo de URLs base no-HTTPS (excepto loopback). Previene
+    leak de la API key si el user/atacante setea http://evil.example/
+  * H3 MEDIO: tempfile usado por OGR ahora se borra en finally. Solo
+    sobrevive cuando OGR es la layer activa y necesita leerlo on-demand
+    (caso fallback).
+  * H4 MEDIO: cap de 50 MB en respuestas HTTP + validación estructural
+    de GeoJSON antes de pasar a OGR. Previene OOM por payloads
+    malformados.
+  * H5 MEDIO: helper safe_error_message en todos los diálogos. Stack
+    traces y mensajes técnicos de la API ya no se muestran al usuario;
+    el detalle queda en QgsMessageLog para debugging.
+  * H6 BAJO: User-Agent leído dinámicamente desde metadata.txt. Antes
+    estaba hardcoded a 0.1.0.
+  * H8 BAJO: clear_credentials retorna ahora True/False según pudo
+    eliminar la entry cifrada. SettingsDialog avisa al user si quedó
+    residuo cifrado por falta de master password en sesión.
+
+ 0.5.0 (2026-04-23)
   * Logo oficial Pudumaps (el pudu con mapa) integrado como icono del
     plugin en el administrador de QGIS y como header de cada diálogo
   * Iconos SVG específicos por acción: settings (engranaje), download

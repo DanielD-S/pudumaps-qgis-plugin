@@ -20,6 +20,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..api_client import Project, PudumapsClient, PudumapsError
+from ..error_utils import log_full_error, safe_error_message
 from ..exporter import ExportError, format_size, layer_to_geojson
 from ..project_loader import PROP_LAYER_ID, PROP_PROJECT_ID, PROP_PROJECT_NAME
 from ..styles import apply_pudumaps_style
@@ -129,7 +130,7 @@ class UploadLayerDialog(QDialog):
         try:
             projects = self.client.list_projects()
         except PudumapsError as e:
-            self._set_status(f"Error: {e}", ok=False)
+            self._set_status(f"Error: {safe_error_message(e)}", ok=False)
             return
 
         self.projects = projects
@@ -174,7 +175,9 @@ class UploadLayerDialog(QDialog):
         try:
             project = self.client.create_project(name.strip())
         except PudumapsError as e:
-            self._set_status(f"No se pudo crear el proyecto: {e}", ok=False)
+            self._set_status(
+                f"No se pudo crear el proyecto: {safe_error_message(e)}", ok=False
+            )
             return
         # Append to combo and select
         self.projects.append(project)
@@ -200,7 +203,7 @@ class UploadLayerDialog(QDialog):
         try:
             geojson, summary = layer_to_geojson(self.layer)
         except ExportError as e:
-            self._set_status(f"Error: {e}", ok=False)
+            self._set_status(f"Error: {safe_error_message(e)}", ok=False)
             self.upload_btn.setEnabled(True)
             return
 
@@ -231,7 +234,7 @@ class UploadLayerDialog(QDialog):
                     ok=True,
                 )
         except PudumapsError as e:
-            msg = f"Error subiendo: {e}"
+            msg = f"Error subiendo: {safe_error_message(e)}"
             if e.status == 401:
                 msg += "\nKey inválida. Revisa Configuración."
             elif e.status == 413:
@@ -242,7 +245,10 @@ class UploadLayerDialog(QDialog):
             self.upload_btn.setEnabled(True)
             return
         except Exception as e:  # noqa: BLE001
-            self._set_status(f"Error inesperado: {e}", ok=False)
+            log_full_error("upload_dialog._upload", e)
+            self._set_status(
+                f"Error inesperado: {safe_error_message(e)}", ok=False
+            )
             self.upload_btn.setEnabled(True)
             return
 
