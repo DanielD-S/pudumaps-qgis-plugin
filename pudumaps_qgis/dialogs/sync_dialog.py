@@ -22,6 +22,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..api_client import PudumapsClient, PudumapsError
+from ..error_utils import log_full_error, safe_error_message
 from ..exporter import ExportError, layer_to_geojson
 from ..project_loader import (
     PROP_LAYER_ID,
@@ -125,10 +126,13 @@ class SyncDialog(QDialog):
                 local_hash_fn=self._compute_local_hashes,
             )
         except PudumapsError as e:
-            self._set_status(f"Error: {e}", ok=False)
+            self._set_status(f"Error: {safe_error_message(e)}", ok=False)
             return
         except Exception as e:  # noqa: BLE001
-            self._set_status(f"Error inesperado: {e}", ok=False)
+            log_full_error("sync_dialog._refresh", e)
+            self._set_status(
+                f"Error inesperado: {safe_error_message(e)}", ok=False
+            )
             return
 
         self._populate_table()
@@ -264,9 +268,14 @@ class SyncDialog(QDialog):
             try:
                 self._dispatch(d, action, result)
             except PudumapsError as e:
-                result.failed.append((d.layer_name, f"{e.code or 'api'}: {e}"))
+                result.failed.append(
+                    (d.layer_name, f"{e.code or 'api'}: {safe_error_message(e)}")
+                )
             except Exception as e:  # noqa: BLE001
-                result.failed.append((d.layer_name, f"unexpected: {e}"))
+                log_full_error("sync_dialog._apply", e)
+                result.failed.append(
+                    (d.layer_name, f"unexpected: {safe_error_message(e)}")
+                )
 
         self.progress.setValue(len(actionable))
         self._show_summary(result)

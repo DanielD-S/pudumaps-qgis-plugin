@@ -33,8 +33,33 @@ def _has_master_password() -> bool:
     return am.masterPasswordIsSet() and not am.masterPasswordHashInDatabase() == ""
 
 
-def save_credentials(api_key: str, base_url: str = DEFAULT_BASE_URL) -> None:
-    """Persist credentials, preferring QgsAuthManager when initialized."""
+def is_encrypted_storage_available() -> bool:
+    """True si QgsAuthManager está listo para cifrar.
+
+    Audit H1 ALTO (2026-05-07): el plugin caía a QSettings plaintext
+    silenciosamente cuando el master password no estaba seteado. Ahora
+    `SettingsDialog` consulta esta función ANTES de guardar y muestra
+    un warning explícito si va a degradar.
+    """
+    return _has_master_password()
+
+
+def save_credentials(
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    *,
+    allow_plaintext_fallback: bool = False,
+) -> None:
+    """Persist credentials, preferring QgsAuthManager when initialized.
+
+    Args:
+        api_key: The API key to store.
+        base_url: API base URL.
+        allow_plaintext_fallback: Si False (default) y QgsAuthManager
+            no está listo, se levanta `PlaintextStorageRefused`. Si
+            True, se guarda en QSettings sin cifrar (caller debe haber
+            obtenido confirmación explícita del usuario).
+    """
     base_url = base_url or DEFAULT_BASE_URL
 
     if _has_master_password():
@@ -50,8 +75,22 @@ def save_credentials(api_key: str, base_url: str = DEFAULT_BASE_URL) -> None:
         cfg.setMethod("Basic")
         _auth_manager().updateAuthenticationConfig(cfg)
         _persist_auth_id(cfg.id())
-    else:
-        _save_plain(api_key, base_url)
+        # Si quedaba algo viejo en plaintext de una instalación anterior,
+        # limpiarlo para no dejar la key duplicada y sin cifrar.
+        _wipe_plain()
+        return
+
+    if not allow_plaintext_fallback:
+        raise PlaintextStorageRefused(
+            "El gestor de autenticación de QGIS no tiene master password "
+            "configurado. Guardar la API key sin cifrar requiere "
+            "confirmación explícita del usuario."
+        )
+    _save_plain(api_key, base_url)
+
+
+class PlaintextStorageRefused(RuntimeError):
+    """Raised by save_credentials() cuando se rechaza fallback plaintext."""
 
 
 def load_credentials() -> ApiCreds | None:
@@ -69,13 +108,30 @@ def load_credentials() -> ApiCreds | None:
     return _load_plain()
 
 
-def clear_credentials() -> None:
+def clear_credentials() -> bool:
+    """Borra credenciales del QgsAuthManager y de QSettings.
+
+    Returns:
+        True si pudo borrar la entry cifrada (o si no había). False si
+        existía una entry cifrada pero no se pudo eliminar (típicamente
+        porque el master password no está set en sesión). En ambos
+        casos las entries de QSettings sí se borran.
+
+    Audit H8 BAJO (2026-05-07): antes esta función llamaba
+    removeAuthenticationConfig sin chequear el return; si fallaba, la
+    entry cifrada sobrevivía y el caller no se enteraba.
+    """
+    auth_cleared = True
     auth_id = _stored_auth_id()
     if auth_id:
-        _auth_manager().removeAuthenticationConfig(auth_id)
+        if _has_master_password():
+            ok = _auth_manager().removeAuthenticationConfig(auth_id)
+            auth_cleared = bool(ok)
+        else:
+            auth_cleared = False
+    _wipe_plain()
     QSettings().remove(f"{SETTINGS_GROUP}/auth_id")
-    QSettings().remove(f"{SETTINGS_GROUP}/api_key")
-    QSettings().remove(f"{SETTINGS_GROUP}/base_url")
+    return auth_cleared
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────
@@ -105,6 +161,12 @@ def _save_plain(api_key: str, base_url: str) -> None:
     s = QSettings()
     s.setValue(f"{SETTINGS_GROUP}/api_key", api_key)
     s.setValue(f"{SETTINGS_GROUP}/base_url", base_url)
+
+
+def _wipe_plain() -> None:
+    s = QSettings()
+    s.remove(f"{SETTINGS_GROUP}/api_key")
+    s.remove(f"{SETTINGS_GROUP}/base_url")
 
 
 def _load_plain() -> ApiCreds | None:

@@ -5,6 +5,8 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
+from .error_utils import log_full_error, safe_error_message
+
 PLUGIN_DIR = Path(__file__).resolve().parent
 ICONS_DIR = PLUGIN_DIR / "icons"
 ICON_PATH = str(ICONS_DIR / "pudumaps-logo.png")  # main brand (menu entries)
@@ -102,8 +104,9 @@ class PudumapsPlugin:
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Pudumaps",
-                f"No se pudo crear el cliente: {e}",
+                f"No se pudo crear el cliente: {safe_error_message(e)}",
             )
+            log_full_error("plugin._create_client", e)
             return
 
         dlg = ProjectsDialog(client, self.iface.mainWindow())
@@ -154,7 +157,7 @@ class PudumapsPlugin:
             client = PudumapsClient(api_key=creds.api_key, base_url=creds.base_url)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(
-                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {e}"
+                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {safe_error_message(e)}"
             )
             return
 
@@ -210,7 +213,7 @@ class PudumapsPlugin:
             client = PudumapsClient(api_key=creds.api_key, base_url=creds.base_url)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(
-                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {e}"
+                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {safe_error_message(e)}"
             )
             return
 

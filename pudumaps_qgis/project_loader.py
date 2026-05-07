@@ -4,11 +4,16 @@ Takes a `PudumapsClient` and a `project_id`. Fetches each layer's full
 geojson and converts it to a memory-based QgsVectorLayer. Applies basic
 default styling and tags the layer with its remote id as a custom
 property so Fase 3+4 can detect which layers came from Pudumaps.
+
+Audit 2026-05-07 (H3 MEDIO + H4 MEDIO): tempfile usado por OGR ahora
+se borra en finally, y el GeoJSON se valida estructuralmente antes de
+escribir (rechazamos shapes que no son FeatureCollection/Feature).
 """
 
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from dataclasses import dataclass
 from typing import Any
@@ -24,6 +29,7 @@ from qgis.core import (
 )
 
 from .api_client import PudumapsClient, PudumapsError
+from .error_utils import log_full_error, safe_error_message
 
 # Custom properties we stamp on every layer we load so we can identify
 # them later during push/sync.
@@ -38,6 +44,39 @@ class LoadResult:
     loaded: int
     failed: list[tuple[str, str]]  # (layer_name, error_message)
     group_name: str
+
+
+class InvalidGeoJsonError(ValueError):
+    """Raised when a payload doesn't look like a valid GeoJSON FeatureCollection/Feature."""
+
+
+def validate_geojson_shape(geojson: Any) -> None:
+    """Audit H4: chequeo defensivo del shape antes de pasar a OGR.
+
+    No es validación geométrica completa (RFC 7946) — solo descarta
+    payloads claramente no-GeoJSON que crashearían OGR de formas opacas
+    o causarían recursión profunda. La validación geométrica fina vive
+    en el backend (validateGeoJson.ts).
+    """
+    if not isinstance(geojson, dict):
+        raise InvalidGeoJsonError("GeoJSON debe ser un objeto JSON.")
+    t = geojson.get("type")
+    if t == "FeatureCollection":
+        features = geojson.get("features")
+        if features is not None and not isinstance(features, list):
+            raise InvalidGeoJsonError(
+                "FeatureCollection.features debe ser una lista."
+            )
+    elif t == "Feature":
+        if not isinstance(geojson.get("geometry"), (dict, type(None))):
+            raise InvalidGeoJsonError(
+                "Feature.geometry debe ser un objeto o null."
+            )
+    else:
+        raise InvalidGeoJsonError(
+            f"Tipo GeoJSON no soportado: {t!r}. "
+            "Esperado: FeatureCollection o Feature."
+        )
 
 
 def infer_geometry_type(geojson: dict[str, Any]) -> str:
@@ -110,63 +149,85 @@ def geojson_to_layer(
     (mixed types, null geometries already filtered, CRS detection via
     `crs` member, etc.) while QgsJsonUtils has subtle schema-inference
     limitations.
+
+    Audit H3 (2026-05-07): el tempfile se borra en finally aunque OGR
+    falle. Si el fallback necesita mantener el archivo en disco para la
+    sesión (caso `layer = ogr_layer`), lo registramos en la layer para
+    que QGIS lo limpie al cerrar el proyecto.
     """
+    validate_geojson_shape(geojson)
     geom_type = infer_geometry_type(geojson)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".geojson", delete=False, encoding="utf-8"
-    ) as tmp:
-        json.dump(geojson, tmp)
-        tmp_path = tmp.name
+    tmp_path: str | None = None
+    keep_tmp_for_layer = False
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".geojson", delete=False, encoding="utf-8"
+        ) as tmp:
+            json.dump(geojson, tmp)
+            tmp_path = tmp.name
 
-    ogr_layer = QgsVectorLayer(tmp_path, name, "ogr")
-    if not ogr_layer.isValid() or ogr_layer.featureCount() == 0:
-        # Fallback: empty memory layer with best-guess geometry. User can
-        # still push edits back and the layer will populate on next pull.
-        uri = f"{geom_type}?crs=EPSG:4326"
-        layer = QgsVectorLayer(uri, name, "memory")
-    else:
-        # Copy features from OGR layer into an in-memory layer so we own
-        # its lifecycle (and can later dirty-track / sync).
-        #
-        # Use OGR's actual wkbType (not our inferred geom_type) because
-        # OGR promotes single geometries to their Multi- variant when
-        # loading GeoJSON, and a memory layer created as "Polygon" will
-        # silently reject MultiPolygon features on addFeatures().
-        wkb_type = ogr_layer.wkbType()
-        geom_name = QgsWkbTypes.displayString(wkb_type) or geom_type
-        crs_authid = ogr_layer.crs().authid() or "EPSG:4326"
-        uri = f"{geom_name}?crs={crs_authid}"
-        fields_uri_parts = [
-            f"field={_safe_field_name(f.name())}:{_field_type_for(f.type())}"
-            for f in ogr_layer.fields()
-        ]
-        if fields_uri_parts:
-            uri += "&" + "&".join(fields_uri_parts)
-        layer = QgsVectorLayer(uri, name, "memory")
-        if not layer.isValid():
-            # Memory provider rejected the URI — last resort, use OGR layer
-            # directly. The tempfile stays on disk for the QGIS session.
-            layer = ogr_layer
+        ogr_layer = QgsVectorLayer(tmp_path, name, "ogr")
+        if not ogr_layer.isValid() or ogr_layer.featureCount() == 0:
+            # Fallback: empty memory layer with best-guess geometry. User can
+            # still push edits back and the layer will populate on next pull.
+            uri = f"{geom_type}?crs=EPSG:4326"
+            layer = QgsVectorLayer(uri, name, "memory")
         else:
-            pr = layer.dataProvider()
-            ok, _added = pr.addFeatures(list(ogr_layer.getFeatures()))
-            if not ok or layer.featureCount() == 0:
-                # addFeatures rejected silently — fall back to OGR layer.
+            # Copy features from OGR layer into an in-memory layer so we own
+            # its lifecycle (and can later dirty-track / sync).
+            #
+            # Use OGR's actual wkbType (not our inferred geom_type) because
+            # OGR promotes single geometries to their Multi- variant when
+            # loading GeoJSON, and a memory layer created as "Polygon" will
+            # silently reject MultiPolygon features on addFeatures().
+            wkb_type = ogr_layer.wkbType()
+            geom_name = QgsWkbTypes.displayString(wkb_type) or geom_type
+            crs_authid = ogr_layer.crs().authid() or "EPSG:4326"
+            uri = f"{geom_name}?crs={crs_authid}"
+            fields_uri_parts = [
+                f"field={_safe_field_name(f.name())}:{_field_type_for(f.type())}"
+                for f in ogr_layer.fields()
+            ]
+            if fields_uri_parts:
+                uri += "&" + "&".join(fields_uri_parts)
+            layer = QgsVectorLayer(uri, name, "memory")
+            if not layer.isValid():
+                # Memory provider rejected the URI — last resort, use OGR layer
+                # directly. El tempfile DEBE sobrevivir para que OGR lo lea.
                 layer = ogr_layer
+                keep_tmp_for_layer = True
             else:
-                layer.updateExtents()
+                pr = layer.dataProvider()
+                ok, _added = pr.addFeatures(list(ogr_layer.getFeatures()))
+                if not ok or layer.featureCount() == 0:
+                    # addFeatures rejected silently — fall back to OGR layer.
+                    layer = ogr_layer
+                    keep_tmp_for_layer = True
+                else:
+                    layer.updateExtents()
 
-    # Stamp remote metadata on the layer for future push/sync
-    if remote_layer_id:
-        layer.setCustomProperty(PROP_LAYER_ID, remote_layer_id)
-    if remote_project_id:
-        layer.setCustomProperty(PROP_PROJECT_ID, remote_project_id)
-    if remote_project_name:
-        layer.setCustomProperty(PROP_PROJECT_NAME, remote_project_name)
+        # Stamp remote metadata on the layer for future push/sync
+        if remote_layer_id:
+            layer.setCustomProperty(PROP_LAYER_ID, remote_layer_id)
+        if remote_project_id:
+            layer.setCustomProperty(PROP_PROJECT_ID, remote_project_id)
+        if remote_project_name:
+            layer.setCustomProperty(PROP_PROJECT_NAME, remote_project_name)
 
-    apply_default_style(layer)
-    return layer
+        apply_default_style(layer)
+        if keep_tmp_for_layer and tmp_path:
+            # Marca para limpieza por si el caller quiere borrarlo después.
+            # NO lo borramos aquí porque OGR lo está leyendo on-demand.
+            layer.setCustomProperty("pudumaps/_tmp_geojson_path", tmp_path)
+        return layer
+    finally:
+        # H3: borrar tempfile siempre que NO lo necesite la layer OGR-backed.
+        if tmp_path and not keep_tmp_for_layer:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass  # ya borrado o permiso denegado — no es crítico
 
 
 def load_project(
@@ -246,9 +307,12 @@ def load_project(
             group.addLayer(layer)
             loaded += 1
         except PudumapsError as e:
-            failed.append((summary.name, f"{e.code or 'api_error'}: {e}"))
+            failed.append(
+                (summary.name, f"{e.code or 'api_error'}: {safe_error_message(e)}")
+            )
         except Exception as e:  # noqa: BLE001
-            failed.append((summary.name, f"unexpected: {e}"))
+            log_full_error("project_loader.load_project", e)
+            failed.append((summary.name, f"unexpected: {safe_error_message(e)}"))
 
     if progress_cb:
         progress_cb(total, total, "")
