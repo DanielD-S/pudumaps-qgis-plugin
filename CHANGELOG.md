@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.0] — 2026-05-18
+
+### Added
+- Nuevo módulo `pudumaps_qgis.ai` con detección runtime de las
+  dependencias opcionales de IA:
+  - `is_geoai_available()` / `is_geoagent_available()` vía
+    `importlib.util.find_spec` — no levanta el paquete pesado.
+  - `geoai_version()` / `geoagent_version()` y los helpers
+    `geoai_matches_pin()` / `geoagent_matches_pin()`.
+  - Constantes `GEOAI_PINNED_VERSION = "0.10.0"` y
+    `GEOAGENT_PINNED_VERSION = "0.4.0"`. Las versiones se bumpean
+    manualmente por release del plugin, NUNCA con rango libre, para
+    protegernos de bumps rotos o versiones yankeadas upstream.
+- `pudumaps_qgis.ai.installer.install_package(...)` — wrapper sobre
+  `subprocess.Popen` que invoca `sys.executable -m pip install --user`
+  con captura de stdout línea a línea, pin de versión (`==X.Y.Z`),
+  extras opcionales, y manejo de timeout. Devuelve `InstallResult`.
+- `dialogs/install_ai_dialog.py` — modal Pudumaps con checkboxes para
+  cada componente (motor de visión / asistente conversacional),
+  prerequisitos (Visual C++ redist en Windows), y `QProgressDialog`
+  alimentado por un `QThread` worker para no congelar QGIS.
+- Tests `tests/test_ai_detection.py` y `tests/test_ai_installer.py` —
+  monkeypatch sobre `importlib` y mock de `subprocess.Popen` para
+  validar todo el flujo sin instalar paquetes reales en CI.
+
+### Notes
+- Esta release solo prepara la infraestructura. Las acciones IA
+  reales (detección de edificios, agua, landcover, change detection,
+  descarga Sentinel) llegan en 0.7.1.
+- Sin geoai/GeoAgent instalados el plugin sigue funcionando
+  exactamente igual que 0.6.0; las features IA quedan latentes.
+
+## [0.6.0] — 2026-05-07
+
+### Security
+- Hardening completo según auditoría 2026-05-07 (PR #1). Ver
+  `metadata.txt` para detalle de los 8 hallazgos cerrados.
+
 ## [0.5.0] — 2026-04-23
 
 ### Added

@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.6.0
+version=0.7.0
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -21,9 +21,21 @@ deprecated=False
 server=False
 hasProcessingProvider=no
 
-tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
+tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.6.0 (2026-05-07) — Security hardening (audit 2026-05-07)
+changelog=0.7.0 (2026-05-18) — Infra IA opcional (foundation)
+  * Nuevo módulo pudumaps_qgis.ai con detección de geoai-py y GeoAgent
+    como dependencias opcionales. Versiones pineadas (geoai-py 0.10.0,
+    GeoAgent 0.4.0) para protegerse de bumps rotos upstream.
+  * Instalador asistido (pip install --user) contra el Python embebido
+    de QGIS, con progreso línea a línea en un worker thread.
+  * Diálogo "Instalar módulo IA" que explica tamaños (~500 MB descarga,
+    ~2 GB en disco) y prerequisitos (VC++ redist en Windows).
+  * Sin acciones IA todavía — esta release solo prepara la
+    infraestructura. Las acciones (detección de edificios, agua,
+    landcover, change detection, descarga Sentinel) llegan en 0.7.1.
+
+ 0.6.0 (2026-05-07) — Security hardening (audit 2026-05-07)
   * H1 ALTO: prompt explícito antes de degradar a almacenamiento
     plaintext de QSettings cuando QgsAuthManager no tiene master
     password. Antes el fallback era silencioso.
