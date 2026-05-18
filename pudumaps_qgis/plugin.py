@@ -14,6 +14,7 @@ ICON_SETTINGS = str(ICONS_DIR / "settings.svg")
 ICON_DOWNLOAD = str(ICONS_DIR / "download.svg")
 ICON_UPLOAD = str(ICONS_DIR / "upload.svg")
 ICON_SYNC = str(ICONS_DIR / "sync.svg")
+ICON_AI = str(ICONS_DIR / "ai.svg")
 
 
 class PudumapsPlugin:
@@ -48,6 +49,11 @@ class PudumapsPlugin:
             "Sincronizar",
             self._sync_current,
             icon_path=ICON_SYNC,
+        )
+        self._add_action(
+            "Instalar módulo IA…",
+            self._open_ai_install,
+            icon_path=ICON_AI,
         )
         # Context menu on the Layers Panel — "right-click on layer →
         # Subir a Pudumaps…". Uses QgsMapLayer.LayerType.VectorLayer from
@@ -162,6 +168,13 @@ class PudumapsPlugin:
             return
 
         dlg = UploadLayerDialog(client, layer, self.iface.mainWindow())
+        dlg.exec_()
+
+    def _open_ai_install(self) -> None:
+        """Abre el diálogo de instalación de dependencias IA opcionales."""
+        from .dialogs.install_ai_dialog import InstallAIDialog
+
+        dlg = InstallAIDialog(self.iface.mainWindow())
         dlg.exec_()
 
     def _sync_current(self) -> None:

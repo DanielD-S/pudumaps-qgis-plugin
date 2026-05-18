@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.1] — 2026-05-18
+
+### Added
+- Entrada **"Instalar módulo IA…"** en el menú `Pudumaps` y en la
+  toolbar, con icono propio (`icons/ai.svg`). Abre el
+  `InstallAIDialog` introducido en 0.7.0 — ahora descubrible por el
+  usuario sin necesidad de invocarlo desde código.
+- `ICON_AI` en `plugin.py` apuntando al nuevo SVG.
+
+### Notes
+- Sigue siendo solo infraestructura. Las acciones IA reales (detección
+  edificios/agua/landcover/cambios/Sentinel) llegan en 0.7.2.
+
 ## [0.7.0] — 2026-05-18
 
 ### Added
