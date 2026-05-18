@@ -5,6 +5,8 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
+from qgis.PyQt.QtCore import Qt
+
 from .error_utils import log_full_error, safe_error_message
 
 PLUGIN_DIR = Path(__file__).resolve().parent
@@ -26,6 +28,7 @@ class PudumapsPlugin:
         self.actions: list[QAction] = []
         self.toolbar = self.iface.addToolBar("Pudumaps")
         self.toolbar.setObjectName("PudumapsToolbar")
+        self._ai_dock = None  # lazy: se crea al primer toggle
 
     # ── Entry / exit ─────────────────────────────────────────────────────
 
@@ -55,6 +58,11 @@ class PudumapsPlugin:
             self._open_ai_install,
             icon_path=ICON_AI,
         )
+        self._add_action(
+            "Panel IA",
+            self._toggle_ai_panel,
+            icon_path=ICON_AI,
+        )
         # Context menu on the Layers Panel — "right-click on layer →
         # Subir a Pudumaps…". Uses QgsMapLayer.LayerType.VectorLayer from
         # the Qgis enum. Applies to all vector layers (existing + future).
@@ -79,6 +87,13 @@ class PudumapsPlugin:
             self.iface.removeCustomActionForLayerType(self._context_action)
         except Exception:  # noqa: BLE001
             pass
+        if self._ai_dock is not None:
+            try:
+                self.iface.removeDockWidget(self._ai_dock)
+                self._ai_dock.deleteLater()
+            except Exception:  # noqa: BLE001
+                pass
+            self._ai_dock = None
         del self.toolbar
 
     # ── Actions ──────────────────────────────────────────────────────────
@@ -176,6 +191,20 @@ class PudumapsPlugin:
 
         dlg = InstallAIDialog(self.iface.mainWindow())
         dlg.exec_()
+        # Si el usuario instaló algo, refresca la disponibilidad del panel.
+        if self._ai_dock is not None:
+            self._ai_dock.refresh()
+
+    def _toggle_ai_panel(self) -> None:
+        """Muestra u oculta el dock del panel IA. Lo crea en el primer uso."""
+        if self._ai_dock is None:
+            from .dialogs.ai_panel import AIToolsDock
+
+            self._ai_dock = AIToolsDock(self.iface, self.iface.mainWindow())
+            self.iface.addDockWidget(Qt.RightDockWidgetArea, self._ai_dock)
+            return
+        # Toggle visibility on subsequent clicks.
+        self._ai_dock.setVisible(not self._ai_dock.isVisible())
 
     def _sync_current(self) -> None:
         """Sync the Pudumaps project referenced by the active layer (or

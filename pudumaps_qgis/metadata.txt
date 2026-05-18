@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.1
+version=0.7.2
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,20 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.1 (2026-05-18) — Instalador IA en menú
+changelog=0.7.2 (2026-05-18) — Panel IA + primera acción (extract_buildings)
+  * Nuevo framework pudumaps_qgis/ai/tools con clase abstracta AITool,
+    registry estático y manejo de dependencias por tool.
+  * Primera acción: "Detectar edificaciones" sobre raster RGB usando
+    geoai.BuildingFootprintExtractor. Aislada la llamada a geoai en un
+    helper único para que el upgrade entre versiones del paquete sea
+    localizado.
+  * Panel lateral "Pudumaps · IA" como QDockWidget (toggle desde menú
+    "Panel IA"). Lista las acciones registradas, grisa botones si
+    falta geoai y muestra mensaje invitando al instalador.
+  * Resultado de cada acción se carga automáticamente como capa
+    vectorial en el proyecto QGIS.
+
+ 0.7.1 (2026-05-18) — Instalador IA en menú
   * Nueva entrada "Instalar módulo IA…" en el menú Pudumaps y la
     toolbar, con icono propio (ai.svg). Abre el diálogo de instalación
     introducido en 0.7.0 para que sea descubrible por el usuario sin
