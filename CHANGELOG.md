@@ -3,6 +3,48 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.2] — 2026-05-18
+
+### Added
+- **Framework de acciones IA** en `pudumaps_qgis/ai/tools/`:
+  - `base.py` — `AITool` abstracto con contrato
+    `validate_input(layer) → Optional[str]` y
+    `run(raster_path, output_path, params, progress_cb) → str`.
+    Helpers `is_available()` / `missing_requirements()` /
+    `ensure_available()` para que cada tool declare sus deps.
+  - `registry.py` — registro estático `get_tools()` / `get_tool(id)`.
+    Agregar una nueva tool = añadir clase a `_TOOL_CLASSES`. No usamos
+    descubrimiento dinámico para no pagar costo de importar PyTorch.
+  - Excepciones `AIToolError` y `AIToolUnavailable` para distinguir
+    fallos recuperables vs. deps faltantes.
+- **Primera acción real**: `extract_buildings.py` —
+  `ExtractBuildingsTool` envuelve la API de building footprint de
+  geoai (intenta `BuildingFootprintExtractor`, cae a
+  `extract_buildings()`). Validación: raster con ≥3 bandas y archivo
+  en disco. La llamada a geoai está aislada en
+  `_run_geoai_buildings()` para que el bump de versión upstream toque
+  un solo lugar.
+- **Panel lateral** `dialogs/ai_panel.py` (`AIToolsDock`,
+  `QDockWidget`):
+  - Un botón por tool registrada; deshabilitados si la tool no está
+    disponible (con tooltip "Falta instalar: <deps>").
+  - Refresh automático tras instalar deps desde el instalador.
+  - Resultado se carga como capa vectorial nueva en el proyecto.
+- **Entrada de menú** "Panel IA" en `plugin.py` que crea el dock al
+  primer click (lazy) y togglea visibilidad en clicks siguientes.
+- Tests `tests/test_ai_tools.py` — 17 nuevos cubriendo contrato base,
+  registry, validación de input de `ExtractBuildingsTool`,
+  `AIToolUnavailable` cuando falta geoai, y rechazo cuando el raster
+  no existe.
+
+### Notes
+- Las acciones aún corren **síncronas** (bloquean QGIS durante la
+  inferencia). Refactor a `QgsTask` viene en 0.7.3 junto con las
+  4 acciones restantes (water, landcover, change_detection,
+  download_sentinel).
+- Sin geoai instalado, el panel y la acción son inertes — el plugin
+  sigue funcionando exactamente como 0.7.1.
+
 ## [0.7.1] — 2026-05-18
 
 ### Added
