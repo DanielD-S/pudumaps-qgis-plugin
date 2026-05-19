@@ -3,6 +3,40 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.3] — 2026-05-18
+
+### Added
+- **Ejecución async** vía `QgsTask`:
+  - `pudumaps_qgis/ai/task_runner.py` — `AIToolTask(QgsTask)` envuelve
+    `AITool.run()`. Acepta callbacks `on_success` / `on_error` /
+    `on_progress`. QGIS gestiona thread, cancelación y la entry del
+    panel Tasks.
+  - El panel IA ahora dispara la tarea con
+    `QgsApplication.taskManager().addTask(task)` en vez de bloquear.
+    Aparece toast "en ejecución" y otro al completar.
+- **Nueva acción** `extract_water.py` (`ExtractWaterTool`):
+  - Wrapper sobre la API de water-body de geoai. Intenta
+    `WaterBodyExtractor`, cae a `extract_water()` /
+    `extract_water_bodies()` según versión.
+  - Mismo contrato que `extract_buildings`: raster ≥3 bandas en disco.
+  - Registrada en `_TOOL_CLASSES` después de buildings.
+- **Doc Nivel 1 chilenización** (`docs/modelos-chile.md`):
+  - Tabla por tool con casos chilenos y cómo rinden hoy (urbanos
+    consolidados / históricos / rurales / palafitos / tomas /
+    Sentinel vs orto IDE Chile / lagos / ríos andinos / salares).
+  - Recomendaciones de input (orto IDE Chile, RGB explícito, recorte).
+  - Roadmap v0.8: modelos finetuneados chilenos
+    (`pudumaps/buildings-rural-cl-v1`, `bosque-nativo-cl-v1`,
+    `tomas-cl-v1`).
+- 8 tests nuevos en `tests/test_ai_tools.py` cubriendo
+  `ExtractWaterTool` y registro de ambas tools.
+
+### Notes
+- Las 3 acciones restantes (`landcover_classification`,
+  `change_detection`, `download_sentinel`) llegan en 0.7.4.
+- Sin `geoai` instalado, ambas acciones quedan inertes — sigue
+  funcionando todo como en 0.7.2.
+
 ## [0.7.2] — 2026-05-18
 
 ### Added

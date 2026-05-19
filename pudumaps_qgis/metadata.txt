@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.2
+version=0.7.3
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,18 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.2 (2026-05-18) — Panel IA + primera acción (extract_buildings)
+changelog=0.7.3 (2026-05-18) — Ejecución async + extract_water + doc Chile
+  * Las acciones IA ahora corren en QgsTask (background thread del task
+    manager de QGIS). La UI ya no se congela durante la inferencia y
+    aparece una entry en el panel Tasks con progreso y cancelación.
+  * Nueva acción: "Detectar cuerpos de agua" (ExtractWaterTool) — para
+    lagos, embalses y ríos sobre raster RGB. Funciona con Sentinel-2 y
+    ortofoto. Caveats Chile documentados.
+  * Nuevo docs/modelos-chile.md (Nivel 1 chilenización): tabla de qué
+    casos rinden bien con pesos de fábrica y cuáles requieren
+    finetuning (rural, palafitos, tomas, bosque nativo).
+
+ 0.7.2 (2026-05-18) — Panel IA + primera acción (extract_buildings)
   * Nuevo framework pudumaps_qgis/ai/tools con clase abstracta AITool,
     registry estático y manejo de dependencias por tool.
   * Primera acción: "Detectar edificaciones" sobre raster RGB usando

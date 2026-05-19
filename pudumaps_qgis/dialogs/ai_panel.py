@@ -27,7 +27,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..ai import is_geoai_available
-from ..ai.tools import AITool, AIToolError, get_tools
+from ..ai.tools import AITool, get_tools
 from ..error_utils import log_full_error, safe_error_message
 from ..styles import apply_pudumaps_style
 from ..ui_helpers import build_header, separator, toast_error, toast_success
@@ -124,20 +124,16 @@ class AIToolsDock(QDockWidget):
     # ── Ejecución de tools ──────────────────────────────────────────
 
     def _run_tool(self, tool: AITool) -> None:
-        """Valida input, prepara output path y ejecuta la tool.
+        """Valida input, prepara output path y dispara la tool en QgsTask.
 
-        Por ahora corre síncrono (bloqueante) — refactor a QgsTask
-        viene en 0.7.3 cuando integremos las 5 acciones. Para una sola
-        acción y rásters chicos de prueba, el bloqueo es aceptable.
+        Async: la inferencia corre en thread background del task manager
+        de QGIS. La UI no se congela y aparece una entry en el panel
+        "Tasks" de QGIS con progreso y opción de cancelar.
         """
         layer = self.iface.activeLayer() if self.iface else None
         err = tool.validate_input(layer)
         if err:
-            QMessageBox.warning(
-                self,
-                "Pudumaps · IA",
-                err,
-            )
+            QMessageBox.warning(self, "Pudumaps · IA", err)
             return
 
         raster_path = _layer_source_path(layer)
@@ -150,23 +146,40 @@ class AIToolsDock(QDockWidget):
             return
 
         output_path = _temp_output_path(tool.id, suffix=".geojson")
-        try:
-            tool.run(
-                raster_path=raster_path,
-                output_path=output_path,
-                progress_cb=lambda msg: self._log(msg),
-            )
-        except AIToolError as e:
-            log_full_error(f"ai_panel.{tool.id}", e)
-            toast_error(self.iface, safe_error_message(e))
-            return
-        except Exception as e:  # noqa: BLE001
-            log_full_error(f"ai_panel.{tool.id}(unexpected)", e)
-            toast_error(self.iface, f"Error inesperado: {safe_error_message(e)}")
-            return
 
-        _load_result_as_layer(self.iface, output_path, layer_name=f"IA: {tool.name}")
-        toast_success(self.iface, f"{tool.name} completado.")
+        # Import lazy: QgsApplication y AIToolTask solo cuando hace falta.
+        from qgis.core import QgsApplication
+
+        from ..ai.task_runner import AIToolTask
+
+        layer_name = f"IA: {tool.name}"
+
+        def on_success(out_path: str) -> None:
+            _load_result_as_layer(self.iface, out_path, layer_name=layer_name)
+            toast_success(self.iface, f"{tool.name} completado.")
+
+        def on_error(msg: str) -> None:
+            log_full_error(f"ai_panel.{tool.id}", RuntimeError(msg))
+            toast_error(self.iface, safe_error_message(msg))
+
+        task = AIToolTask(
+            tool=tool,
+            raster_path=raster_path,
+            output_path=output_path,
+            on_success=on_success,
+            on_error=on_error,
+            on_progress=lambda m: self._log(m),
+        )
+        # Aviso al usuario que la tarea está en cola.
+        toast_success(
+            self.iface,
+            f"{tool.name} en ejecución — verás el progreso en el panel Tasks.",
+        )
+        QgsApplication.taskManager().addTask(task)
+        # Mantener referencia para que el GC no lo recoja antes de que
+        # QGIS lo termine. addTask transfiere ownership pero algunas
+        # combinaciones de PyQt/sip se confunden si pierdes la ref.
+        self._last_task = task
 
     def _log(self, msg: str) -> None:
         """Hook reservado para mostrar progreso. Por ahora a console."""

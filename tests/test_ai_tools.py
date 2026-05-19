@@ -19,6 +19,7 @@ import pytest
 from pudumaps_qgis.ai.tools import AITool, AIToolError, AIToolUnavailable
 from pudumaps_qgis.ai.tools import registry as registry_mod
 from pudumaps_qgis.ai.tools.extract_buildings import ExtractBuildingsTool
+from pudumaps_qgis.ai.tools.extract_water import ExtractWaterTool
 
 
 # ── Helpers / fakes ──────────────────────────────────────────────────────
@@ -223,3 +224,65 @@ def test_extract_buildings_id_is_stable():
     assert ExtractBuildingsTool.id == "extract_buildings"
     assert ExtractBuildingsTool.input_kind == "raster"
     assert "geoai" in ExtractBuildingsTool.requires
+
+
+# ── ExtractWaterTool ─────────────────────────────────────────────────────
+
+
+def test_extract_water_rejects_none_layer():
+    msg = ExtractWaterTool().validate_input(None)
+    assert msg is not None
+    assert "capa" in msg.lower()
+
+
+def test_extract_water_rejects_vector_layer():
+    msg = ExtractWaterTool().validate_input(_FakeVectorLayer())
+    assert msg is not None
+    assert "raster" in msg.lower() or "vectorial" in msg.lower()
+
+
+def test_extract_water_rejects_single_band_raster():
+    msg = ExtractWaterTool().validate_input(_FakeRasterLayer(band_count=1))
+    assert msg is not None
+    assert "3" in msg
+
+
+def test_extract_water_accepts_3band_raster():
+    msg = ExtractWaterTool().validate_input(_FakeRasterLayer(band_count=3))
+    assert msg is None
+
+
+def test_extract_water_run_without_geoai_raises_unavailable(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    tool = ExtractWaterTool()
+    with pytest.raises(AIToolUnavailable):
+        tool.run(
+            raster_path="/no-importa.tif",
+            output_path="/no-importa.geojson",
+        )
+
+
+def test_extract_water_run_with_missing_raster_raises(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = ExtractWaterTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="/no-existe-en-este-disco.tif",
+            output_path=os.path.join(tempfile.gettempdir(), "out.geojson"),
+        )
+    assert "No existe" in str(exc.value)
+
+
+def test_extract_water_id_is_stable():
+    assert ExtractWaterTool.id == "extract_water"
+    assert ExtractWaterTool.input_kind == "raster"
+    assert "geoai" in ExtractWaterTool.requires
+
+
+# ── Registry incluye ambas tools ─────────────────────────────────────────
+
+
+def test_registry_includes_water_and_buildings():
+    ids = registry_mod.tool_ids()
+    assert "extract_buildings" in ids
+    assert "extract_water" in ids
