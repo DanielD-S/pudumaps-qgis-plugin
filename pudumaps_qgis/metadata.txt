@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.11
+version=0.7.12
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,16 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.11 (2026-05-18) — Fix MKL conflict + GeoAgent pin
+changelog=0.7.12 (2026-05-18) — Auto-uninstall pyarrow + RGB renderer
+  * BUG CULPABLE IDENTIFICADO: pyarrow.lib choca con DLLs C++ de QGIS
+    causando "DLL load failed while importing lib". Auto-uninstall en
+    el cleanup post-instalación (sklearn lo importa defensivamente y
+    cae sin él — no afecta acciones IA).
+  * Sentinel-2 descargado ahora se carga con renderer multibanda
+    R=1/G=2/B=3 + stretch min-max automático. Antes se veía negro
+    porque QGIS default lo cargaba en grayscale.
+
+ 0.7.11 (2026-05-18) — Fix MKL conflict + GeoAgent pin
   * BUG REPORTADO: DLL load failed se mantiene incluso en main thread.
     Causa real: conflicto MKL/OpenMP entre QGIS y PyTorch (no
     threading como pensé en 0.7.9). Fix: warm_up_geoai ahora setea

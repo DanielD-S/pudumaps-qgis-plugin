@@ -87,7 +87,44 @@ class _InstallWorker(QThread):
             if not result.success:
                 # No seguir con el resto si uno falla.
                 break
+
+        # Cleanup post-instalación: desinstalar pyarrow si quedó instalado.
+        # Su `lib.pyd` choca con DLLs C++ de QGIS y causa
+        # "DLL load failed while importing lib" al hacer `import geoai`
+        # desde el plugin. sklearn lo importa defensivamente y cae sin él
+        # — no afecta funcionalidad de las acciones IA. Documentado en
+        # docs/modelos-chile.md.
+        if any(r.success for r in self._results):
+            self._cleanup_pyarrow()
+
         self.finished_with_results.emit(self._results)
+
+    def _cleanup_pyarrow(self) -> None:
+        """Best-effort uninstall de pyarrow tras instalar geoai/GeoAgent.
+
+        Si pyarrow no está instalado, pip lo skipea sin error. Si falla
+        por permisos u otra razón, solo loggeamos — no abortamos.
+        """
+        self.line.emit("→ Limpiando pyarrow (causa DLL conflict con QGIS)…")
+        try:
+            from ..ai.installer import qgis_python_executable
+            import subprocess as _subprocess
+
+            _subprocess.run(  # noqa: S603
+                [
+                    qgis_python_executable(),
+                    "-m",
+                    "pip",
+                    "uninstall",
+                    "-y",
+                    "--disable-pip-version-check",
+                    "pyarrow",
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+        except Exception as e:  # noqa: BLE001
+            log_full_error("install_ai_dialog._cleanup_pyarrow", e)
 
 
 class InstallAIDialog(QDialog):

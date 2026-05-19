@@ -306,6 +306,11 @@ def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
     Despacha por extensión: GeoTIFF/VRT → `QgsRasterLayer`, GeoJSON/GPKG/
     SHP → `QgsVectorLayer`. Extensiones desconocidas se intentan como
     vector primero (cubre el caso más común).
+
+    Para rásters con ≥3 bandas (caso típico: Sentinel-2 RGB descargado),
+    aplica un renderer multibanda con stretch min-max automático. Sin
+    esto QGIS los renderiza en grayscale tomando solo banda 1 y la
+    imagen se ve negra/sin contraste.
     """
     if iface is None:
         return
@@ -315,6 +320,8 @@ def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
 
         if ext in _RASTER_EXTS:
             layer = QgsRasterLayer(path, layer_name)
+            if layer.isValid() and layer.bandCount() >= 3:
+                _apply_rgb_renderer(layer)
         else:
             # _VECTOR_EXTS y fallback genérico.
             layer = QgsVectorLayer(path, layer_name, "ogr")
@@ -325,6 +332,42 @@ def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
         QgsProject.instance().addMapLayer(layer)
     except Exception as e:  # noqa: BLE001
         log_full_error("ai_panel._load_result_as_layer", e)
+
+
+def _apply_rgb_renderer(layer) -> None:
+    """Configura un raster multibanda como composición RGB con stretch.
+
+    Por defecto QGIS carga rásters multibanda en grayscale (solo banda 1).
+    Para Sentinel-2 y ortofotos RGB queremos R=1, G=2, B=3 + estiramiento
+    min-max para contraste. Esto reproduce lo que el usuario haría manualmente
+    desde Simbología → Multibanda en color → Stretch min/max.
+
+    Tolerante a fallos: si algo de la API de QGIS cambia entre versiones,
+    silenciamos el error y dejamos el renderer default. La capa se carga
+    igual, solo se ve negra hasta que el usuario configure manualmente.
+    """
+    try:
+        from qgis.core import (
+            QgsContrastEnhancement,
+            QgsMultiBandColorRenderer,
+            QgsRasterMinMaxOrigin,
+        )
+
+        renderer = QgsMultiBandColorRenderer(layer.dataProvider(), 1, 2, 3)
+        layer.setRenderer(renderer)
+
+        # Aplicar stretch min/max sobre el extent visible. Esto da
+        # contraste útil para imagen Sentinel-2 (rango típico 0-3000 en
+        # vez del 0-65535 del uint16).
+        layer.setContrastEnhancement(
+            QgsContrastEnhancement.StretchToMinimumMaximum,
+            QgsRasterMinMaxOrigin.MinMax,
+        )
+        layer.triggerRepaint()
+    except Exception:  # noqa: BLE001
+        # No es fatal — la capa quedará en grayscale default y el usuario
+        # puede arreglarlo desde Simbología. Loggear sería ruido.
+        pass
 
 
 __all__ = ["AIToolsDock"]
