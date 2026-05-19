@@ -129,14 +129,20 @@ class InstallAIDialog(QDialog):
         warn = QLabel(
             "<b>Antes de continuar:</b>"
             "<ul>"
+            "<li>La descarga toma <b>10-30 minutos</b> según tu conexión "
+            "(~500 MB de PyTorch + dependencias).</li>"
             "<li>En Windows: instala <i>Microsoft Visual C++ Redistributable</i> "
             "si no lo tienes (PyTorch lo necesita).</li>"
-            "<li>Conexión a internet estable durante la descarga.</li>"
+            "<li>Conexión a internet estable durante toda la descarga.</li>"
             "<li>Cierra otros plugins que usen Python intensivamente.</li>"
+            "<li><b>Si aparece una ventana de consola negra: NO la cierres</b> — "
+            "es pip mostrando progreso. Se cierra sola al terminar.</li>"
             "</ul>"
             "<small>Las dependencias se instalan en tu perfil de usuario "
             "(<code>pip install --user</code>) — no requieren permisos "
-            "de administrador.</small>"
+            "de administrador. Mientras descarga, el progreso aparece "
+            "tanto aquí abajo como en la ventana de consola si llega a "
+            "abrirse.</small>"
         )
         warn.setWordWrap(True)
         warn.setTextFormat(Qt.RichText)
