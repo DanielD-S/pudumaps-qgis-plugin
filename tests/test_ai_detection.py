@@ -115,6 +115,77 @@ def test_qgis_python_diagnostics_returns_keys():
         assert key in info, f"Falta key '{key}' en diagnostics"
 
 
+# ── warm_up_geoai / is_geoai_warmed_up ────────────────────────────────────
+
+
+def test_warm_up_initially_false():
+    ai._reset_warm_up_for_tests()
+    assert ai.is_geoai_warmed_up() is False
+
+
+def test_warm_up_idempotent(monkeypatch):
+    """Una vez calentado, llamadas subsiguientes son no-op rápidos."""
+    ai._reset_warm_up_for_tests()
+    call_count = {"n": 0}
+
+    def fake_import(name):
+        call_count["n"] += 1
+        return types.ModuleType(name)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import)
+    # Pero warm_up_geoai usa `import geoai` literal, no importlib —
+    # parchamos sys.modules para evitar el verdadero import.
+    fake_geoai = types.ModuleType("geoai")
+    monkeypatch.setitem(sys.modules, "geoai", fake_geoai)
+
+    ai.warm_up_geoai()
+    assert ai.is_geoai_warmed_up() is True
+
+    ai.warm_up_geoai()  # segunda llamada → no-op
+    ai.warm_up_geoai()  # tercera llamada → no-op
+    # is_geoai_warmed_up sigue True, no se rompe nada.
+    assert ai.is_geoai_warmed_up() is True
+
+
+def test_warm_up_propagates_import_error(monkeypatch):
+    """Si geoai no importa, warm_up_geoai propaga la excepción para
+    que el caller la maneje."""
+    ai._reset_warm_up_for_tests()
+
+    # Asegurar que `import geoai` falle removiendo de sys.modules y
+    # mockeando el meta_path para que no encuentre el módulo.
+    if "geoai" in sys.modules:
+        monkeypatch.delitem(sys.modules, "geoai", raising=False)
+
+    class _BlockingFinder:
+        def find_spec(self, name, path=None, target=None):
+            if name == "geoai":
+                return None
+            return None
+
+    monkeypatch.setattr(sys, "meta_path", [_BlockingFinder()])
+
+    with pytest.raises(ImportError):
+        ai.warm_up_geoai()
+
+    # Y el flag NO debe quedar True si falló.
+    assert ai.is_geoai_warmed_up() is False
+
+
+def test_reset_warm_up_for_tests():
+    """Helper de testing: re-setea el flag a False."""
+    fake_geoai = types.ModuleType("geoai")
+    sys.modules["geoai"] = fake_geoai
+    try:
+        ai.warm_up_geoai()
+        assert ai.is_geoai_warmed_up() is True
+        ai._reset_warm_up_for_tests()
+        assert ai.is_geoai_warmed_up() is False
+    finally:
+        sys.modules.pop("geoai", None)
+        ai._reset_warm_up_for_tests()
+
+
 def test_qgis_python_executable_windows_real_python_passthrough(monkeypatch, tmp_path):
     """Si sys.executable YA es python.exe (Windows nativo, no QGIS),
     devolverlo tal cual sin tocar sys.prefix."""

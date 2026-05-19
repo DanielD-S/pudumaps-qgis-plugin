@@ -17,16 +17,18 @@ from typing import Optional
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
+    QApplication,
     QDockWidget,
     QLabel,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from ..ai import is_geoai_available
+from ..ai import is_geoai_available, is_geoai_warmed_up, warm_up_geoai
 from ..ai.tools import AITool, get_tools
 from ..error_utils import log_full_error, safe_error_message
 from ..styles import apply_pudumaps_style
@@ -165,6 +167,16 @@ class AIToolsDock(QDockWidget):
             # Usuario canceló el diálogo de parámetros.
             return
 
+        # Warm-up de geoai en el MAIN thread la primera vez.
+        # PyTorch en Windows no puede inicializar sus DLLs desde threads
+        # worker (caso QgsTask) — falla con "DLL load failed while
+        # importing lib". Importar acá en el main thread carga torch en
+        # sys.modules; los QgsTask subsiguientes lo encuentran cacheado.
+        if "geoai" in tool.requires and not is_geoai_warmed_up():
+            if not self._warm_up_blocking():
+                # Falló el import — toast ya mostrado, no lanzamos task.
+                return
+
         output_path = _temp_output_path(tool.id, suffix=tool.output_suffix)
 
         # Import lazy: QgsApplication y AIToolTask solo cuando hace falta.
@@ -201,6 +213,52 @@ class AIToolsDock(QDockWidget):
         # QGIS lo termine. addTask transfiere ownership pero algunas
         # combinaciones de PyQt/sip se confunden si pierdes la ref.
         self._last_task = task
+
+    def _warm_up_blocking(self) -> bool:
+        """Carga geoai en el main thread con un modal "Cargando…".
+
+        Bloquea el UI por 30-90s la primera vez por sesión. Es inevitable
+        en QGIS-Windows: PyTorch debe inicializarse desde el main thread
+        o falla con DLL load. Llamadas posteriores son no-op (idempotente
+        — `is_geoai_warmed_up()` corta antes de invocar esta).
+
+        Returns:
+            True si el import tuvo éxito y se puede lanzar el QgsTask.
+            False si falló (ya mostró toast al usuario).
+        """
+        progress = QProgressDialog(
+            "Cargando módulo IA por primera vez (30-90 segundos)…\n"
+            "QGIS no responderá durante este lapso. NO lo cierres.\n"
+            "Esto solo pasa una vez por sesión.",
+            None,  # sin botón Cancelar — interrumpir aquí dejaría torch
+                   # a medias y haría falta reiniciar QGIS.
+            0,
+            0,  # indeterminado
+            self,
+        )
+        progress.setWindowTitle("Pudumaps · IA — Cargando módulo")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setCancelButton(None)
+        progress.show()
+        # Forzar repaint del modal antes de bloquear con import.
+        QApplication.processEvents()
+
+        try:
+            warm_up_geoai()
+        except Exception as e:  # noqa: BLE001
+            progress.close()
+            log_full_error("ai_panel._warm_up_blocking", e)
+            QMessageBox.critical(
+                self,
+                "Pudumaps · IA",
+                f"No se pudo cargar el módulo IA:\n\n{safe_error_message(e)}\n\n"
+                "Verifica que ejecutaste 'Instalar módulo IA' y reinicia QGIS.",
+            )
+            return False
+
+        progress.close()
+        return True
 
     def _log(self, msg: str) -> None:
         """Hook reservado para mostrar progreso. Por ahora a console."""

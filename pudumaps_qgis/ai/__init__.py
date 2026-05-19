@@ -173,6 +173,61 @@ def qgis_python_executable() -> str:
     return exe
 
 
+# ── Warm-up del main thread ─────────────────────────────────────────────
+#
+# PyTorch en Windows requiere que `import torch` ocurra desde el main
+# thread del proceso — si lo hace un thread worker (caso QgsTask),
+# falla con "DLL load failed while importing lib" porque el loader de
+# DLLs de Windows no resuelve algunos paths desde threads non-main.
+#
+# Llamar `warm_up_geoai()` desde el main thread (típicamente desde el
+# panel IA antes de lanzar el primer task) carga torch+geoai en
+# `sys.modules`. Tasks subsiguientes hacen `import geoai` y obtienen
+# el módulo cacheado sin re-inicializar DLLs.
+#
+# Variable a módulo (singleton). Se setea en True tras el primer
+# import exitoso y persiste por la vida del proceso QGIS.
+
+_warmed_up = False
+
+
+def is_geoai_warmed_up() -> bool:
+    """True si `warm_up_geoai()` ya cargó torch+geoai con éxito."""
+    return _warmed_up
+
+
+def warm_up_geoai() -> None:
+    """Importa geoai (y toda su cadena: torch, transformers, etc.)
+    desde el thread actual.
+
+    BLOQUEANTE — toma 30-90 segundos la primera vez por sesión, mucho
+    menos en llamadas subsiguientes (idempotente: solo hace work la
+    primera vez).
+
+    DEBE llamarse desde el main thread del proceso QGIS. Si se llama
+    desde un thread worker, el `import torch` fallará con
+    "DLL load failed" en Windows.
+
+    Raises:
+        ImportError si geoai no se puede cargar (deps faltantes, DLL
+        rota, etc.). Lo dejamos propagar para que el caller pueda
+        manejar el error con un mensaje al usuario.
+    """
+    global _warmed_up
+    if _warmed_up:
+        return
+    # Importar geoai trae torch + transformers + segmentation_models + ...
+    # Toda la cadena queda cacheada en sys.modules.
+    import geoai  # noqa: F401
+    _warmed_up = True
+
+
+def _reset_warm_up_for_tests() -> None:
+    """Resetea el flag — solo para tests."""
+    global _warmed_up
+    _warmed_up = False
+
+
 def qgis_python_diagnostics() -> dict:
     """Snapshot de variables relevantes para diagnosticar bugs del instalador.
 
@@ -209,4 +264,6 @@ __all__ = [
     "geoagent_matches_pin",
     "qgis_python_executable",
     "qgis_python_diagnostics",
+    "warm_up_geoai",
+    "is_geoai_warmed_up",
 ]
