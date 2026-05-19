@@ -121,39 +121,39 @@ def _run_geoai_change(
     output_path: str,
     progress_cb: Optional[ProgressCallback],
 ) -> None:
-    """Aísla la llamada a la API de geoai/torchange.
+    """Llamada real a la API de geoai 0.10.x.
 
-    Si el módulo evoluciona, este es el único lugar a modificar.
+    La clase se llama `ChangeDetection` (no `ChangeDetector`). El método
+    principal es `detect_changes(image1_path, image2_path, output_path)`.
+
+    Bajo el capó usa torchange (PyTorch change detection) + SAM
+    (Segment Anything Model). La primera vez descarga el checkpoint SAM
+    `vit_h` (~2.4 GB) — esto puede tardar bastante.
     """
     _emit(progress_cb, "Importando geoai/torchange…")
     import geoai  # noqa: F401
 
-    detector = None
     try:
-        from geoai import ChangeDetector  # type: ignore[attr-defined]
-        detector = ChangeDetector()
-    except (ImportError, AttributeError):
-        pass
-
-    if detector is not None and hasattr(detector, "predict"):
-        _emit(progress_cb, "Ejecutando inferencia de cambios…")
-        detector.predict(
-            raster_before, raster_after, output_path=output_path
-        )
-        return
-
-    fn = (
-        getattr(geoai, "detect_changes", None)
-        or getattr(geoai, "change_detection", None)
-    )
-    if fn is None:
+        from geoai import ChangeDetection  # type: ignore[attr-defined]
+    except (ImportError, AttributeError) as e:
         raise AIToolError(
-            "Esta versión de geoai no expone ChangeDetector ni "
-            "detect_changes(). Verifica que geoai-py==0.10.0 esté "
-            "instalado (Pudumaps → Instalar módulo IA…)."
-        )
-    _emit(progress_cb, "Ejecutando inferencia de cambios…")
-    fn(raster_before, raster_after, output_path=output_path)
+            "Esta versión de geoai no expone ChangeDetection. "
+            "Verifica que geoai-py==0.10.0 esté instalado "
+            "(Pudumaps → Instalar módulo IA…)."
+        ) from e
+
+    _emit(progress_cb, "Inicializando ChangeDetection (puede descargar SAM checkpoint ~2.4 GB la 1a vez)…")
+    # sam_model_type por defecto = "vit_h", el más preciso pero más pesado.
+    # Si en el futuro queremos opción más liviana, exponer como param.
+    detector = ChangeDetection()
+
+    _emit(progress_cb, "Ejecutando detección de cambios…")
+    detector.detect_changes(
+        image1_path=raster_before,
+        image2_path=raster_after,
+        output_path=output_path,
+        return_results=False,  # No nos sirve el dict en memoria, solo el TIF.
+    )
 
 
 __all__ = ["ChangeDetectionTool"]

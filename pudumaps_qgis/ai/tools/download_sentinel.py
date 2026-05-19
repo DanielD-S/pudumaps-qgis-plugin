@@ -170,33 +170,96 @@ def _run_geoai_download(
     output_path: str,
     progress_cb: Optional[ProgressCallback],
 ) -> None:
-    """Aísla la llamada a la API de descarga de geoai.
+    """Descarga Sentinel-2 desde Microsoft Planetary Computer vía STAC.
 
-    geoai-py 0.10.x suele exponer `download_sentinel2` o
-    `download_sentinel`. Intentamos ambos para resistir variaciones.
+    geoai 0.10 NO tiene built-in para esto. Implementamos directo usando
+    `pystac-client` + `planetary-computer` (ambas deps de geoai, ya
+    instaladas tras `Instalar módulo IA`).
+
+    Pipeline:
+    1. Query STAC collection `sentinel-2-l2a` en bbox + fecha + cloud cover.
+    2. Toma la primera escena disponible (menor cloud cover).
+    3. Firma la URL con planetary_computer.sign() (Auth opcional pero gratis).
+    4. Lee R/G/B (bandas B04/B03/B02) con rioxarray, recortado al bbox.
+    5. Apila las 3 bandas y exporta como GeoTIFF.
     """
-    _emit(progress_cb, "Importando geoai…")
-    import geoai  # noqa: F401
+    _emit(progress_cb, "Importando pystac-client + planetary-computer…")
 
-    fn = (
-        getattr(geoai, "download_sentinel2", None)
-        or getattr(geoai, "download_sentinel", None)
-    )
-    if fn is None:
+    try:
+        import planetary_computer  # type: ignore[import-not-found]
+        from pystac_client import Client  # type: ignore[import-not-found]
+    except ImportError as e:
         raise AIToolError(
-            "Esta versión de geoai no expone download_sentinel2() ni "
-            "download_sentinel(). Verifica que geoai-py==0.10.0 esté "
-            "instalado (Pudumaps → Instalar módulo IA…)."
+            "Faltan dependencias para descarga Sentinel-2 "
+            "(pystac-client / planetary-computer). Reinstala el módulo IA "
+            "(Pudumaps → Instalar módulo IA…)."
+        ) from e
+
+    _emit(progress_cb, "Conectando a Microsoft Planetary Computer (STAC)…")
+    catalog = Client.open(
+        "https://planetarycomputer.microsoft.com/api/stac/v1",
+        modifier=planetary_computer.sign_inplace,
+    )
+
+    _emit(progress_cb, f"Buscando escenas Sentinel-2 L2A ({date_start} → {date_end}, ≤{cloud_max}% nubes)…")
+    search = catalog.search(
+        collections=["sentinel-2-l2a"],
+        bbox=list(bbox),
+        datetime=f"{date_start}/{date_end}",
+        query={"eo:cloud_cover": {"lt": cloud_max}},
+        max_items=10,
+    )
+    items = list(search.items())
+
+    if not items:
+        raise AIToolError(
+            f"No se encontraron escenas Sentinel-2 para bbox {bbox} entre "
+            f"{date_start} y {date_end} con ≤{cloud_max}% de nubes. "
+            "Intenta ampliar fechas, subir cloud_max, o mover el bbox."
         )
 
-    _emit(progress_cb, f"Consultando catálogo Sentinel-2 ({date_start} → {date_end})…")
-    fn(
-        bbox=tuple(bbox),
-        start_date=date_start,
-        end_date=date_end,
-        max_cloud_cover=cloud_max,
-        output_path=output_path,
-    )
+    # Ordenar por cloud_cover ascendente, tomar la mejor.
+    items.sort(key=lambda it: it.properties.get("eo:cloud_cover", 100))
+    best = items[0]
+    cloud = best.properties.get("eo:cloud_cover", "?")
+    item_date = best.properties.get("datetime", "?")[:10]
+    _emit(progress_cb, f"Mejor escena: {item_date} ({cloud}% nubes). Descargando bandas RGB…")
+
+    # Bandas RGB de Sentinel-2: B04=red, B03=green, B02=blue.
+    try:
+        import rioxarray  # type: ignore[import-not-found]
+        from rioxarray.merge import merge_arrays  # noqa: F401
+    except ImportError as e:
+        raise AIToolError(
+            "Falta rioxarray para descarga Sentinel-2. Reinstala el módulo IA."
+        ) from e
+
+    band_assets = {"red": "B04", "green": "B03", "blue": "B02"}
+    rasters = []
+    for label, asset_key in band_assets.items():
+        if asset_key not in best.assets:
+            raise AIToolError(
+                f"La escena Sentinel-2 no tiene asset '{asset_key}'. "
+                "Reporta este caso — puede ser un problema del catálogo STAC."
+            )
+        url = best.assets[asset_key].href
+        _emit(progress_cb, f"Descargando banda {label} ({asset_key})…")
+        # `rioxarray.open_rasterio` con un URL firmado de PC funciona via vsicurl.
+        da = rioxarray.open_rasterio(url, masked=True)
+        # Recortar al bbox del usuario para no descargar la escena completa
+        # (cada escena Sentinel-2 son ~100x100 km, ~700 MB sin recorte).
+        da_clipped = da.rio.clip_box(
+            minx=bbox[0], miny=bbox[1], maxx=bbox[2], maxy=bbox[3], crs="EPSG:4326"
+        )
+        rasters.append(da_clipped.squeeze())
+
+    _emit(progress_cb, "Apilando RGB y guardando GeoTIFF…")
+    # Apilar las 3 bandas en un raster multibanda.
+    import xarray as xr  # type: ignore[import-not-found]
+
+    stacked = xr.concat(rasters, dim="band")
+    stacked = stacked.assign_coords(band=[1, 2, 3])
+    stacked.rio.to_raster(output_path, driver="GTiff", compress="DEFLATE")
 
 
 __all__ = ["DownloadSentinelTool"]

@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.8
+version=0.7.10
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,21 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.8 (2026-05-18) — Hotfix robusto: detección Python QGIS
+changelog=0.7.10 (2026-05-18) — Rewrite wrappers + warm-up + UX polish
+  * Rewrite de las 5 acciones IA con APIs reales de geoai 0.10.0:
+    BuildingFootprintExtractor.process_raster (no predict),
+    ChangeDetection.detect_changes (no ChangeDetector),
+    CLIPSegmentation con text prompt para water (no WaterBodyExtractor),
+    image_segmentation HF para landcover (marcado experimental),
+    pystac-client + planetary-computer para download Sentinel-2.
+  * Warm-up de geoai en main thread (fix DLL load en QgsTask Windows).
+  * PyTorch CPU-only forzado desde índice oficial PyTorch (evita
+    DLL CUDA fail en máquinas sin GPU NVIDIA).
+  * Barra de progreso real con tiempo + MB + paquete N/M durante
+    instalación pip.
+  * Ventana consola cmd oculta vía CREATE_NO_WINDOW.
+
+ 0.7.8 (2026-05-18) — Hotfix robusto: detección Python QGIS
   * El fix de 0.7.7 (usar sys.prefix) no cubría todas las layouts de
     QGIS-Windows: algunas distribuciones tienen sys.prefix apuntando
     al root de QGIS, no al directorio del Python embebido.

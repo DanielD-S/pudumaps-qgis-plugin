@@ -3,6 +3,62 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.10] — 2026-05-18
+
+Smoke test release. Resuelve los 4 bugs reportados durante validación
+manual de 0.7.6/0.7.7/0.7.8 + alinea wrappers con API real de geoai 0.10.
+
+### Fixed
+- **DLL load failed en QgsTask** (Windows): warm-up de `import geoai`
+  en main thread vía `warm_up_geoai()`. La primera vez por sesión
+  bloquea 30-90s con dialog "Cargando módulo IA". Tasks subsiguientes
+  vuelan sin re-inicializar DLLs. Causa: PyTorch en Windows no soporta
+  inicialización desde threads worker.
+- **PyTorch CUDA por default** (Windows sin GPU): el instalador ahora
+  fuerza CPU-only desde `https://download.pytorch.org/whl/cpu` antes
+  de instalar geoai. Evita el "DLL load failed" cuando pip baja la
+  variante CUDA que requiere drivers NVIDIA.
+- **Detección de python.exe QGIS** (más robusta que 0.7.8): combina
+  `os.__file__` + cadena de fallbacks sobre `sys.prefix`/`exec_prefix`/
+  `base_prefix` + layout OSGeo4W. Cubre el caso QGIS-Windows donde
+  `sys.prefix` apunta al QGIS root en vez del Python embebido.
+
+### Changed — Rewrite de las 5 acciones IA con APIs reales de geoai 0.10.0
+- **`extract_buildings`**: `BuildingFootprintExtractor.process_raster()`
+  (no `.predict()`). Produce GeoTIFF intermedio + vectoriza a GeoJSON.
+- **`change_detection`**: `ChangeDetection` (clase, no `ChangeDetector`)
+  con método `detect_changes(image1_path, image2_path, output_path)`.
+  Descarga SAM ViT-H checkpoint (~2.4 GB) la primera vez.
+- **`extract_water`**: `CLIPSegmentation.segment_image()` con text prompt
+  "water bodies, lakes, rivers, reservoirs". Threshold 0.4. Vectoriza
+  máscara con rasterio + shapely.
+- **`landcover_classification`** *(marcado experimental)*: usa
+  `image_segmentation()` de geoai.hf con default
+  `facebook/mask2former-cityscapes` que NO es ideal para landcover
+  satelital. Mejora planeada v0.8 con modelo HF de landcover (Prithvi).
+- **`download_sentinel`**: reescrito desde cero con `pystac_client` +
+  `planetary-computer` (deps de geoai ya instaladas). Query STAC
+  `sentinel-2-l2a` en Microsoft Planetary Computer, ordena por menor
+  cloud cover, descarga R/G/B (B04/B03/B02) recortadas al bbox con
+  rioxarray, apila en GeoTIFF.
+
+### Added — UX polish
+- **Barra de progreso real** durante `pip install`: parser de líneas
+  pip (`PipProgressParser`) extrae paquete N/M + MB descargados +
+  tiempo transcurrido. Cap en 95% hasta ver "Successfully installed".
+- **`CREATE_NO_WINDOW`** en subprocess: pip ya no abre ventana cmd
+  negra durante la instalación. Si por algún edge case aparece, el
+  dialog avisa "no la cierres".
+- Tiempo estimado de instalación en el aviso del dialog ("10-30 min,
+  ~500 MB de PyTorch").
+
+### Notes
+- Pendiente smoke test manual completo de las 5 acciones con datos
+  reales. Si alguna API tampoco coincide con lo verificado en el repo
+  upstream, fix targeted en 0.7.11.
+- Las acciones todavía corren CPU-only — la inferencia puede tomar
+  minutos sobre rásters grandes.
+
 ## [0.7.8] — 2026-05-18
 
 ### Fixed
