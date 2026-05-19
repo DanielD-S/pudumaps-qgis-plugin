@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.3
+version=0.7.4
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,21 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.3 (2026-05-18) — Ejecución async + extract_water + doc Chile
+changelog=0.7.4 (2026-05-18) — Landcover + re-etiquetado clases Chile
+  * Tercera acción IA: "Clasificar uso de suelo"
+    (LandCoverClassificationTool). Produce raster GeoTIFF categórico
+    con sidecar JSON de leyenda re-etiquetada al español + ecorregión
+    chilena cuando el bbox cae en Chile.
+  * Nuevo módulo pudumaps_qgis.ai.chile_classes (Nivel 1 chilenización
+    en código): lookup determinístico bbox → ecorregión (matorral
+    esclerófilo / estepa patagónica / bosque siempreverde / desierto
+    costero / etc.) + traducción de clases genéricas (shrubland →
+    matorral esclerófilo / patagónico según zona).
+  * AITool gana atributo output_suffix (default .geojson). Landcover
+    usa .tif. El panel ahora dispatcha QgsVectorLayer / QgsRasterLayer
+    por extensión del output.
+
+ 0.7.3 (2026-05-18) — Ejecución async + extract_water + doc Chile
   * Las acciones IA ahora corren en QgsTask (background thread del task
     manager de QGIS). La UI ya no se congela durante la inferencia y
     aparece una entry en el panel Tasks con progreso y cancelación.
