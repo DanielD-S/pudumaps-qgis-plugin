@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal
+from qgis.PyQt.QtCore import Qt, QThread, QTimer, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -32,6 +32,7 @@ from ..ai import (
     is_geoai_available,
 )
 from ..ai.installer import InstallResult, install_package
+from ..ai.pip_progress import PipProgressParser
 from ..error_utils import log_full_error, safe_error_message
 from ..styles import apply_pudumaps_style
 from ..ui_helpers import build_header, separator
@@ -194,11 +195,16 @@ class InstallAIDialog(QDialog):
             )
             return
 
+        # Estimado dinámico: geoai solo = ~35 paquetes; +GeoAgent = ~45.
+        estimate = 35
+        if any(p[0] == GEOAGENT_PACKAGE for p in packages):
+            estimate = 45
+
         progress = QProgressDialog(
             "Preparando instalación…",
             "Cancelar",
             0,
-            0,  # indeterminate
+            100,  # determinate
             self,
         )
         progress.setWindowTitle("Pudumaps — Instalando IA")
@@ -206,16 +212,45 @@ class InstallAIDialog(QDialog):
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
         progress.setAutoReset(False)
+        progress.setValue(0)
+
+        # Parser de líneas de pip → progreso estructurado.
+        parser = PipProgressParser(estimate=estimate)
+
+        # Contador de tiempo transcurrido: QTimer cada segundo.
+        # Usamos atributo en el worker para que el callback persista.
+        import time
+
+        start_ts = time.monotonic()
+        elapsed_timer = QTimer(progress)
+        elapsed_timer.setInterval(1000)
+
+        def update_label() -> None:
+            snap = parser.snapshot
+            elapsed_s = int(time.monotonic() - start_ts)
+            mm, ss = divmod(elapsed_s, 60)
+            time_str = f"{mm:02d}:{ss:02d}"
+            last = snap.last_line
+            if len(last) > 70:
+                last = "…" + last[-69:]
+            progress.setLabelText(
+                f"{snap.human_summary} · tiempo {time_str}\n{last}"
+            )
+
+        elapsed_timer.timeout.connect(update_label)
+        elapsed_timer.start()
 
         worker = _InstallWorker(packages)
 
         def on_line(text: str) -> None:
-            # Mostrar solo las últimas ~80 chars para que el dialog no
-            # se estire indefinidamente.
-            shown = text if len(text) <= 80 else "…" + text[-79:]
-            progress.setLabelText(shown)
+            parser.feed(text)
+            snap = parser.snapshot
+            progress.setValue(snap.percent)
+            update_label()
 
         def on_done(results: list[InstallResult]) -> None:
+            elapsed_timer.stop()
+            progress.setValue(100)
             progress.close()
             self._show_summary(results)
             worker.deleteLater()
