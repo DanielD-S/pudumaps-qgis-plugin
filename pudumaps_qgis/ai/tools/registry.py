@@ -18,12 +18,16 @@ from typing import List, Optional, Type
 
 from .base import AITool
 from .change_detection import ChangeDetectionTool
+from .download_sentinel import DownloadSentinelTool
 from .extract_buildings import ExtractBuildingsTool
 from .extract_water import ExtractWaterTool
 from .landcover_classification import LandCoverClassificationTool
 
 # Orden visible en el panel (top → bottom).
+# DownloadSentinel va primero porque es el típico flujo "no tengo
+# imagen → la descargo → corro otras acciones encima".
 _TOOL_CLASSES: List[Type[AITool]] = [
+    DownloadSentinelTool,
     ExtractBuildingsTool,
     ExtractWaterTool,
     LandCoverClassificationTool,
