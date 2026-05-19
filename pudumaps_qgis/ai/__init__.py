@@ -23,7 +23,7 @@ from typing import Optional
 
 # Versiones exactas requeridas. Bump manual por release del plugin.
 GEOAI_PINNED_VERSION = "0.10.0"
-GEOAGENT_PINNED_VERSION = "0.4.0"
+GEOAGENT_PINNED_VERSION = "1.8.0"
 
 # PyPI package names (pueden diferir del nombre de import).
 GEOAI_PACKAGE = "geoai-py"
@@ -196,6 +196,11 @@ def is_geoai_warmed_up() -> bool:
     return _warmed_up
 
 
+def warm_up_geoai_environment_only() -> None:
+    """Prepara env vars / DLL paths SIN importar geoai. Útil para tests."""
+    _prepare_torch_environment()
+
+
 def warm_up_geoai() -> None:
     """Importa geoai (y toda su cadena: torch, transformers, etc.)
     desde el thread actual.
@@ -216,6 +221,10 @@ def warm_up_geoai() -> None:
     global _warmed_up
     if _warmed_up:
         return
+    # Preparar env vars / DLL directories ANTES del import. Esto
+    # resuelve el conflicto MKL/OpenMP entre QGIS y PyTorch en Windows
+    # (síntoma: "DLL load failed while importing lib").
+    _prepare_torch_environment()
     # Importar geoai trae torch + transformers + segmentation_models + ...
     # Toda la cadena queda cacheada en sys.modules.
     import geoai  # noqa: F401
@@ -226,6 +235,47 @@ def _reset_warm_up_for_tests() -> None:
     """Resetea el flag — solo para tests."""
     global _warmed_up
     _warmed_up = False
+
+
+def _prepare_torch_environment() -> None:
+    """Ajusta env vars / DLL directories para que torch cargue en QGIS-Windows.
+
+    QGIS bundles su propio Qt + Intel MKL + OpenMP runtime. PyTorch también
+    trae estas libs. Cuando ambos se cargan en el mismo proceso, MKL aborta
+    con un mensaje sobre "multiple copies of OpenMP runtime" o falla con
+    "DLL load failed while importing lib" (mensaje genérico pero típicamente
+    es el conflicto MKL).
+
+    Estas dos variables son los workarounds estándar documentados por
+    Intel/PyTorch:
+    - KMP_DUPLICATE_LIB_OK=TRUE: permite múltiples copias de OpenMP en el
+      proceso. Hay un riesgo teórico de resultados numéricos no idénticos
+      entre runs, pero en práctica nadie ha reportado problemas reales.
+    - os.add_dll_directory(torch/lib): registra el path de torch para que
+      el loader de Windows encuentre sus DLLs aunque QGIS haya tocado PATH.
+
+    Idempotente: llamar varias veces no hace daño.
+    """
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+    # Registrar torch/lib/ como DLL directory si torch ya está instalado.
+    # Hacemos best-effort: si falla, seguimos — el import después puede
+    # funcionar de todas formas.
+    try:
+        # No importamos torch acá (eso es lo que estamos preparando).
+        # Localizamos su carpeta `lib/` por sys.path / find_spec.
+        import importlib.util as _ilu
+
+        spec = _ilu.find_spec("torch")
+        if spec is not None and spec.origin:
+            torch_dir = os.path.dirname(spec.origin)
+            torch_lib = os.path.join(torch_dir, "lib")
+            if os.path.isdir(torch_lib) and hasattr(os, "add_dll_directory"):
+                os.add_dll_directory(torch_lib)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        # Si find_spec rompe, simplemente seguimos sin pre-registrar. El
+        # import principal va a fallar con mensaje claro si torch no está.
+        pass
 
 
 def qgis_python_diagnostics() -> dict:
