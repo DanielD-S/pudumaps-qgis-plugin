@@ -190,17 +190,40 @@ def _run_geoai_buildings(
             "ortofoto ≤1m/px."
         )
 
-    # Si gdf es válido pero el archivo no se escribió, lo escribimos a mano.
-    if gdf is not None and not _os.path.exists(output_path):
-        gdf.to_file(output_path, driver="GeoJSON")
-
-    # Si el archivo existe pero gdf es None, lo leemos para contar features.
+    # Si el archivo existe pero gdf es None, lo leemos para arreglar CRS.
     if gdf is None:
         try:
             import geopandas as gpd
             gdf = gpd.read_file(output_path)
         except Exception:  # noqa: BLE001
             return 0
+
+    # FIX CRÍTICO: geoai a veces devuelve gdf con coords UTM pero CRS=4326
+    # (mal etiquetado), o sin CRS, y al escribir como GeoJSON los polígonos
+    # caen en el océano cuando QGIS los carga. Detectamos y corregimos
+    # comparando con el CRS REAL del raster fuente.
+    gdf = _fix_crs_against_raster(gdf, raster_path, progress_cb)
+
+    # Escribimos (siempre) usando GeoJSON RFC7946 — fuerza coordenadas a
+    # EPSG:4326 reales (lat/lon), que es el único CRS que GeoJSON spec admite.
+    # to_file con driver GeoJSON reproyecta automáticamente si el gdf está
+    # en otro CRS, así que las coordenadas escritas son siempre lat/lon.
+    if gdf.crs is None:
+        # Sin CRS: asumir el del raster como último recurso.
+        try:
+            import rasterio
+            with rasterio.open(raster_path) as ds:
+                if ds.crs is not None:
+                    gdf = gdf.set_crs(ds.crs)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # Reproyectar a 4326 antes de escribir GeoJSON (lo standard).
+    if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+        _emit(progress_cb, f"Reproyectando de {gdf.crs.to_string()} a EPSG:4326…")
+        gdf = gdf.to_crs(epsg=4326)
+
+    gdf.to_file(output_path, driver="GeoJSON")
 
     try:
         n = int(len(gdf))
@@ -220,6 +243,59 @@ def _run_geoai_buildings(
 
     _emit(progress_cb, f"Detectados {n} edificios.")
     return n
+
+
+def _fix_crs_against_raster(gdf, raster_path: str, progress_cb):
+    """Detecta y corrige CRS mal etiquetado del gdf contra el raster fuente.
+
+    Caso común: geoai devuelve gdf con coords en UTM del raster pero
+    gdf.crs=EPSG:4326 (mal etiquetado). Al escribir como GeoJSON las
+    coords UTM quedan etiquetadas como lat/lon → polígonos caen en el océano.
+
+    Heurística:
+    1. Leer CRS REAL del raster fuente.
+    2. Comparar con gdf.crs declarado.
+    3. Si gdf coords están en rangos de UTM (>180 en X o >90 en Y) pero
+       gdf.crs es 4326 → corregimos: re-etiquetar al CRS del raster.
+    """
+    try:
+        import rasterio
+    except ImportError:
+        return gdf
+
+    try:
+        with rasterio.open(raster_path) as ds:
+            raster_crs = ds.crs
+            if raster_crs is None:
+                return gdf
+    except Exception:  # noqa: BLE001
+        return gdf
+
+    # Chequeo de coords: si están fuera de rango lat/lon válido, no son 4326.
+    try:
+        bounds = gdf.total_bounds  # (minx, miny, maxx, maxy)
+        coords_look_like_utm = (
+            abs(bounds[0]) > 180
+            or abs(bounds[2]) > 180
+            or abs(bounds[1]) > 90
+            or abs(bounds[3]) > 90
+        )
+    except Exception:  # noqa: BLE001
+        coords_look_like_utm = False
+
+    if coords_look_like_utm:
+        # gdf.crs declarado puede ser 4326 (incorrecto) o None.
+        # Forzamos al CRS del raster (las coords sí matchean ese CRS).
+        if gdf.crs is None or gdf.crs.to_epsg() == 4326:
+            _emit(
+                progress_cb,
+                f"Detectado CRS mal etiquetado: coords no son lat/lon, "
+                f"re-etiquetando como {raster_crs.to_string()}…",
+            )
+            # set_crs sin allow_override falla si ya hay CRS; usamos allow_override.
+            gdf = gdf.set_crs(raster_crs, allow_override=True)
+
+    return gdf
 
 
 __all__ = ["ExtractBuildingsTool"]
