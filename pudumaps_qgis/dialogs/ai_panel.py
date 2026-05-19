@@ -126,23 +126,43 @@ class AIToolsDock(QDockWidget):
     def _run_tool(self, tool: AITool) -> None:
         """Valida input, prepara output path y dispara la tool en QgsTask.
 
+        Flujo:
+            1. Si `input_kind != "none"`: validar la capa activa contra
+               `tool.validate_input()`.
+            2. Llamar `tool.prompt_params(self, iface)` — si devuelve
+               None el usuario canceló y abortamos.
+            3. Lanzar QgsTask con raster_path + params.
+
         Async: la inferencia corre en thread background del task manager
         de QGIS. La UI no se congela y aparece una entry en el panel
         "Tasks" de QGIS con progreso y opción de cancelar.
         """
-        layer = self.iface.activeLayer() if self.iface else None
-        err = tool.validate_input(layer)
-        if err:
-            QMessageBox.warning(self, "Pudumaps · IA", err)
-            return
+        raster_path = ""
+        if tool.input_kind != "none":
+            layer = self.iface.activeLayer() if self.iface else None
+            err = tool.validate_input(layer)
+            if err:
+                QMessageBox.warning(self, "Pudumaps · IA", err)
+                return
 
-        raster_path = _layer_source_path(layer)
-        if not raster_path:
-            QMessageBox.warning(
-                self,
-                "Pudumaps · IA",
-                "No se pudo determinar el path en disco del raster.",
-            )
+            raster_path = _layer_source_path(layer) or ""
+            if not raster_path:
+                QMessageBox.warning(
+                    self,
+                    "Pudumaps · IA",
+                    "No se pudo determinar el path en disco del raster.",
+                )
+                return
+
+        # Pedir parámetros extra si la tool los necesita.
+        try:
+            params = tool.prompt_params(parent=self, iface=self.iface)
+        except Exception as e:  # noqa: BLE001
+            log_full_error(f"ai_panel.{tool.id}.prompt_params", e)
+            toast_error(self.iface, f"Error pidiendo parámetros: {safe_error_message(e)}")
+            return
+        if params is None:
+            # Usuario canceló el diálogo de parámetros.
             return
 
         output_path = _temp_output_path(tool.id, suffix=tool.output_suffix)
@@ -166,6 +186,7 @@ class AIToolsDock(QDockWidget):
             tool=tool,
             raster_path=raster_path,
             output_path=output_path,
+            params=params,
             on_success=on_success,
             on_error=on_error,
             on_progress=lambda m: self._log(m),

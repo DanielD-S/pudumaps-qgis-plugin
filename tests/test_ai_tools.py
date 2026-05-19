@@ -18,6 +18,7 @@ import pytest
 
 from pudumaps_qgis.ai.tools import AITool, AIToolError, AIToolUnavailable
 from pudumaps_qgis.ai.tools import registry as registry_mod
+from pudumaps_qgis.ai.tools.change_detection import ChangeDetectionTool
 from pudumaps_qgis.ai.tools.extract_buildings import ExtractBuildingsTool
 from pudumaps_qgis.ai.tools.extract_water import ExtractWaterTool
 from pudumaps_qgis.ai.tools.landcover_classification import LandCoverClassificationTool
@@ -353,3 +354,91 @@ def test_default_output_suffix_is_geojson():
     """Buildings y water no declaran output_suffix → heredan .geojson."""
     assert ExtractBuildingsTool.output_suffix == ".geojson"
     assert ExtractWaterTool.output_suffix == ".geojson"
+
+
+# ── input_kind="none" hook + prompt_params() default ─────────────────────
+
+
+def test_base_prompt_params_default_returns_empty_dict():
+    """Tools simples no necesitan override; el default `{}` los deja pasar."""
+    assert ExtractBuildingsTool().prompt_params() == {}
+    assert ExtractWaterTool().prompt_params() == {}
+    assert LandCoverClassificationTool().prompt_params() == {}
+
+
+# ── ChangeDetectionTool ──────────────────────────────────────────────────
+
+
+def test_change_detection_input_kind_is_none():
+    """No usa capa activa — todo viene de prompt_params."""
+    assert ChangeDetectionTool.input_kind == "none"
+    assert ChangeDetectionTool.output_suffix == ".tif"
+    assert ChangeDetectionTool.id == "change_detection"
+
+
+def test_change_detection_validate_input_always_ok():
+    """Con input_kind='none', validate_input no rechaza nada."""
+    tool = ChangeDetectionTool()
+    assert tool.validate_input(None) is None
+    assert tool.validate_input(_FakeRasterLayer()) is None
+    assert tool.validate_input(_FakeVectorLayer()) is None
+
+
+def test_change_detection_run_requires_both_paths(monkeypatch):
+    """Si faltan raster_before o raster_after en params, error claro."""
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = ChangeDetectionTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={},
+        )
+    assert "raster_before" in str(exc.value)
+
+
+def test_change_detection_run_rejects_same_raster(monkeypatch, tmp_path):
+    """Pasar el mismo path como antes y después se rechaza."""
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    raster = tmp_path / "r.tif"
+    raster.write_bytes(b"")
+    tool = ChangeDetectionTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path=str(tmp_path / "out.tif"),
+            params={"raster_before": str(raster), "raster_after": str(raster)},
+        )
+    assert "mismo" in str(exc.value).lower()
+
+
+def test_change_detection_run_rejects_missing_raster(monkeypatch, tmp_path):
+    """Si uno de los paths no existe en disco, error específico."""
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    raster_a = tmp_path / "a.tif"
+    raster_a.write_bytes(b"")
+    tool = ChangeDetectionTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path=str(tmp_path / "out.tif"),
+            params={
+                "raster_before": str(raster_a),
+                "raster_after": "/no-existe.tif",
+            },
+        )
+    assert "después" in str(exc.value)
+
+
+def test_change_detection_run_without_geoai_raises_unavailable(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(AIToolUnavailable):
+        ChangeDetectionTool().run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={"raster_before": "/a.tif", "raster_after": "/b.tif"},
+        )
+
+
+def test_registry_includes_change_detection():
+    assert "change_detection" in registry_mod.tool_ids()

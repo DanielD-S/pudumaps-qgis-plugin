@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.4
+version=0.7.5
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,19 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.4 (2026-05-18) — Landcover + re-etiquetado clases Chile
+changelog=0.7.5 (2026-05-18) — Change detection + framework prompt_params
+  * Cuarta acción IA: "Detectar cambios (2 rásters)"
+    (ChangeDetectionTool). Compara dos rásters del mismo bbox y
+    distinta fecha, produce máscara binaria de cambios.
+  * Nuevo patrón en AITool: input_kind='none' + prompt_params(parent,
+    iface) hook. Permite tools que no usan la capa activa y necesitan
+    pedir input vía diálogo propio. Útil también para futuros tools
+    que requieran fechas, bbox custom, etc.
+  * Diálogo selector dialogs/change_detection_dialog.py lista los
+    rásters del proyecto y pide "antes" y "después" con validación
+    (no permite el mismo, requiere ≥2 rásters cargados).
+
+ 0.7.4 (2026-05-18) — Landcover + re-etiquetado clases Chile
   * Tercera acción IA: "Clasificar uso de suelo"
     (LandCoverClassificationTool). Produce raster GeoTIFF categórico
     con sidecar JSON de leyenda re-etiquetada al español + ecorregión

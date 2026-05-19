@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import List, Optional, Type
 
 from .base import AITool
+from .change_detection import ChangeDetectionTool
 from .extract_buildings import ExtractBuildingsTool
 from .extract_water import ExtractWaterTool
 from .landcover_classification import LandCoverClassificationTool
@@ -26,6 +27,7 @@ _TOOL_CLASSES: List[Type[AITool]] = [
     ExtractBuildingsTool,
     ExtractWaterTool,
     LandCoverClassificationTool,
+    ChangeDetectionTool,
 ]
 
 
