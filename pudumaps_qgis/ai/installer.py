@@ -135,16 +135,26 @@ def install_package(
             ),
         )
 
+    # CREATE_NO_WINDOW (0x08000000): suprime la ventana de consola que
+    # Windows abre por default cuando subprocess.Popen lanza un .exe.
+    # Sin esto, el usuario ve un cmd.exe negro y feo mientras pip baja
+    # PyTorch (~500 MB). En Linux/macOS la flag no existe.
+    popen_kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "bufsize": 1,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    if sys.platform == "win32":
+        # CREATE_NO_WINDOW vive en subprocess en Python 3.7+; en versiones
+        # más viejas hay que usar 0x08000000 literal.
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        popen_kwargs["creationflags"] = no_window
+
     try:
-        process = subprocess.Popen(  # noqa: S603 (cmd construido localmente)
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            encoding="utf-8",
-            errors="replace",
-        )
+        process = subprocess.Popen(cmd, **popen_kwargs)  # noqa: S603
     except OSError as e:
         return InstallResult(
             package=package,
