@@ -85,45 +85,113 @@ def qgis_python_executable() -> str:
     Gotcha Windows: en QGIS-Windows `sys.executable` apunta al **binario
     GUI de QGIS** (`qgis-bin.exe` / `qgis-ltr-bin.exe`), NO a python.exe.
     Si invocas `subprocess.run([sys.executable, "-m", "pip", ...])`,
-    Windows relanza QGIS con esos argumentos en vez de pip — y QGIS
-    interpreta "geoai-py==0.10.0" como un archivo de proyecto, fallando
-    con "could not be found".
+    Windows relanza QGIS con esos argumentos — y QGIS interpreta
+    "geoai-py==0.10.0" como archivo de proyecto.
 
-    `sys.prefix` sí apunta consistentemente al directorio de la
-    instalación de Python (en QGIS-Windows: `…\apps\PythonXX\`). Desde
-    ahí python.exe está garantizado.
+    Estrategia (en orden de robustez):
+      1) Linux/macOS: `sys.executable` ya es python correcto. Listo.
+      2) Si `sys.executable` ya es python(.exe), usarlo.
+      3) Derivar desde `os.__file__` — siempre apunta a `<python_root>/Lib/os.py`,
+         así que `python_root` queda fijo independiente de cómo el embebedor
+         de QGIS haya configurado `sys.prefix`. **Más robusto.**
+      4) Probar `sys.prefix`, `sys.exec_prefix`, `sys.base_prefix` + nombres
+         comunes (python.exe, python3.exe, pythonw.exe).
+      5) Buscar `apps/Python*/python.exe` bajo esos prefijos (estructura
+         típica OSGeo4W).
+      6) Fallback final: `sys.executable` original. Falla, pero al menos
+         no enmascara el problema.
 
-    Linux/macOS: `sys.executable` ya es python correcto.
+    Devuelve siempre un string. El caller debería verificar que el path
+    final existe antes de invocarlo.
     """
-    # Linux / macOS: sys.executable es python correcto.
     if sys.platform != "win32":
         return sys.executable
 
-    # Windows: si sys.executable termina en python(.exe), usarlo.
     exe = sys.executable
     base = os.path.basename(exe).lower()
     if base.startswith("python") and base.endswith(".exe"):
         return exe
 
-    # Caso QGIS-Windows: derivar python.exe desde sys.prefix.
-    candidate = os.path.join(sys.prefix, "python.exe")
-    if os.path.isfile(candidate):
-        return candidate
+    candidate_names = ("python.exe", "python3.exe", "pythonw.exe")
 
-    # Algunas distribuciones de QGIS embeben python3.exe en vez de python.exe.
-    candidate3 = os.path.join(sys.prefix, "python3.exe")
-    if os.path.isfile(candidate3):
-        return candidate3
+    # Estrategia 3: derivar desde os.__file__ (siempre dentro de <python_root>/Lib/).
+    # Esto es independiente de sys.prefix, que algunos embebedores
+    # configuran apuntando al directorio de la app (QGIS root) en vez
+    # del directorio de Python.
+    try:
+        os_module_path = os.__file__
+    except AttributeError:
+        os_module_path = None
+    if os_module_path:
+        # os.py vive en <python_root>/Lib/os.py → subir 2 niveles.
+        try:
+            python_root = os.path.dirname(os.path.dirname(os.path.abspath(os_module_path)))
+            for name in candidate_names:
+                candidate = os.path.join(python_root, name)
+                if os.path.isfile(candidate):
+                    return candidate
+        except OSError:
+            pass
 
-    # Último intento: buscar en sys.prefix/Scripts/ o sys.prefix/bin/.
-    for subdir in ("Scripts", "bin"):
-        candidate = os.path.join(sys.prefix, subdir, "python.exe")
-        if os.path.isfile(candidate):
-            return candidate
+    # Estrategia 4: probar todos los prefijos disponibles + nombres.
+    prefixes = []
+    for attr in ("prefix", "exec_prefix", "base_prefix", "base_exec_prefix"):
+        value = getattr(sys, attr, None)
+        if value and value not in prefixes:
+            prefixes.append(value)
 
-    # Fallback al sys.executable original — fallará pero al menos no
-    # silenciamos el error.
+    for root in prefixes:
+        for name in candidate_names:
+            candidate = os.path.join(root, name)
+            if os.path.isfile(candidate):
+                return candidate
+        # Subdirs típicos en algunas distribuciones.
+        for subdir in ("Scripts", "bin"):
+            for name in candidate_names:
+                candidate = os.path.join(root, subdir, name)
+                if os.path.isfile(candidate):
+                    return candidate
+
+    # Estrategia 5: buscar `apps/Python*/python.exe` (OSGeo4W layout).
+    for root in prefixes:
+        apps_dir = os.path.join(root, "apps")
+        if not os.path.isdir(apps_dir):
+            continue
+        try:
+            entries = os.listdir(apps_dir)
+        except OSError:
+            continue
+        for entry in entries:
+            if not entry.lower().startswith("python"):
+                continue
+            for name in candidate_names:
+                candidate = os.path.join(apps_dir, entry, name)
+                if os.path.isfile(candidate):
+                    return candidate
+
+    # Estrategia 6: rendirse y devolver lo que teníamos.
     return exe
+
+
+def qgis_python_diagnostics() -> dict:
+    """Snapshot de variables relevantes para diagnosticar bugs del instalador.
+
+    El instalador la incluye en el log cuando falla, así reportes de
+    bugs traen siempre el contexto que necesitamos (qué es sys.executable,
+    qué prefijos vio, qué resolución obtuvo `qgis_python_executable`).
+
+    No tiene side effects ni hace I/O — solo lee atributos de sys/os.
+    """
+    info = {
+        "platform": sys.platform,
+        "sys.executable": sys.executable,
+        "sys.prefix": sys.prefix,
+        "sys.exec_prefix": getattr(sys, "exec_prefix", None),
+        "sys.base_prefix": getattr(sys, "base_prefix", None),
+        "os.__file__": getattr(os, "__file__", None),
+        "resolved_python": qgis_python_executable(),
+    }
+    return info
 
 
 __all__ = [
@@ -140,4 +208,5 @@ __all__ = [
     "geoai_matches_pin",
     "geoagent_matches_pin",
     "qgis_python_executable",
+    "qgis_python_diagnostics",
 ]

@@ -93,7 +93,12 @@ def _fake_popen(stdout_lines: list[str], exit_code: int = 0):
 
 
 def test_install_package_success_collects_output_and_calls_progress():
-    """Con exit_code=0, el resultado es success=True y progress_cb recibe líneas."""
+    """Con exit_code=0, el resultado es success=True y progress_cb recibe líneas.
+
+    Bypass la nueva validación defensiva de python.exe haciendo
+    qgis_python_executable devolver sys.executable real (el del runner
+    de tests, que sí es un python válido).
+    """
     lines_seen: list[str] = []
 
     fake_lines = [
@@ -102,7 +107,9 @@ def test_install_package_success_collects_output_and_calls_progress():
         "Successfully installed geoai-py-0.10.0",
     ]
 
-    with patch.object(installer.subprocess, "Popen", return_value=_fake_popen(fake_lines, 0)):
+    with patch.object(
+        installer, "qgis_python_executable", return_value=sys.executable
+    ), patch.object(installer.subprocess, "Popen", return_value=_fake_popen(fake_lines, 0)):
         result = install_package(
             "geoai-py",
             version="0.10.0",
@@ -114,7 +121,10 @@ def test_install_package_success_collects_output_and_calls_progress():
     assert result.package == "geoai-py"
     assert result.version == "0.10.0"
     assert "Successfully installed" in result.output
-    assert lines_seen == fake_lines
+    # Las primeras líneas son el bloque de diagnostics; las últimas son
+    # las del subprocess.
+    assert any("Successfully installed" in line for line in lines_seen)
+    assert any("[pudumaps-ai diagnostics]" in line for line in lines_seen)
 
 
 def test_install_package_failure_has_error_message():
@@ -123,7 +133,9 @@ def test_install_package_failure_has_error_message():
         "Collecting geoai-py==99.99.99",
         "ERROR: No matching distribution found for geoai-py==99.99.99",
     ]
-    with patch.object(installer.subprocess, "Popen", return_value=_fake_popen(fake_lines, 1)):
+    with patch.object(
+        installer, "qgis_python_executable", return_value=sys.executable
+    ), patch.object(installer.subprocess, "Popen", return_value=_fake_popen(fake_lines, 1)):
         result = install_package("geoai-py", version="99.99.99")
 
     assert result.success is False
@@ -135,6 +147,8 @@ def test_install_package_failure_has_error_message():
 def test_install_package_handles_popen_oserror():
     """Si Popen lanza OSError (binario no encontrado), no rompe — devuelve fail."""
     with patch.object(
+        installer, "qgis_python_executable", return_value=sys.executable
+    ), patch.object(
         installer.subprocess,
         "Popen",
         side_effect=OSError("python not found"),
@@ -154,7 +168,9 @@ def test_install_package_broken_progress_cb_does_not_abort():
         raise RuntimeError("UI crashed")
 
     fake_lines = ["A", "B", "Successfully installed geoai-py-0.10.0"]
-    with patch.object(installer.subprocess, "Popen", return_value=_fake_popen(fake_lines, 0)):
+    with patch.object(
+        installer, "qgis_python_executable", return_value=sys.executable
+    ), patch.object(installer.subprocess, "Popen", return_value=_fake_popen(fake_lines, 0)):
         result = install_package(
             "geoai-py",
             version="0.10.0",
@@ -175,7 +191,9 @@ def test_install_package_timeout_kills_process():
         -9,  # kill exit code
     ]
 
-    with patch.object(installer.subprocess, "Popen", return_value=proc):
+    with patch.object(
+        installer, "qgis_python_executable", return_value=sys.executable
+    ), patch.object(installer.subprocess, "Popen", return_value=proc):
         result = install_package("geoai-py", version="0.10.0", timeout_s=1)
 
     assert result.success is False

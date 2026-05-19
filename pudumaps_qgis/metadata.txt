@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.7
+version=0.7.8
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,21 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.7 (2026-05-18) — Hotfix: instalador IA en Windows
+changelog=0.7.8 (2026-05-18) — Hotfix robusto: detección Python QGIS
+  * El fix de 0.7.7 (usar sys.prefix) no cubría todas las layouts de
+    QGIS-Windows: algunas distribuciones tienen sys.prefix apuntando
+    al root de QGIS, no al directorio del Python embebido.
+  * Estrategia más robusta: usar os.__file__ (que SIEMPRE apunta a
+    <python_root>/Lib/os.py) para derivar el python.exe correcto.
+    Fallbacks múltiples si esto falla.
+  * Defensa adicional: el instalador valida que el python resuelto
+    sea un archivo real antes de invocar subprocess. Si la detección
+    falla, error claro en vez del críptico "could not be found".
+  * Diagnóstico al inicio del log de pip: [pudumaps-ai diagnostics]
+    con sys.executable / sys.prefix / resolved_python para que los
+    reportes de bug traigan siempre el contexto necesario.
+
+ 0.7.7 (2026-05-18) — Hotfix: instalador IA en Windows
   * BUG CRÍTICO: en QGIS-Windows sys.executable apunta al binario GUI
     (qgis-bin.exe), no a python.exe. El instalador IA de 0.7.6 fallaba
     "relanzando QGIS" en vez de invocar pip, con error críptico

@@ -50,8 +50,11 @@ def test_qgis_python_executable_windows_qgis_uses_sys_prefix(monkeypatch, tmp_pa
     """En Windows + sys.executable=qgis-bin.exe debe derivar python.exe
     desde sys.prefix (donde QGIS embebe el Python).
 
-    Reproduce el bug que reportó usuario en 0.7.6: subprocess relanzaba
-    QGIS porque sys.executable apuntaba a qgis-ltr-bin.exe."""
+    Reproduce el bug reportado en 0.7.6: subprocess relanzaba QGIS porque
+    sys.executable apuntaba a qgis-ltr-bin.exe. Monkeypatchemos también
+    os.__file__ para forzar el path de la estrategia 4 (sys.prefix)
+    aislando los tests del os real del sistema.
+    """
     fake_qgis_root = tmp_path / "Program Files" / "QGIS 3.34" / "bin"
     fake_qgis_root.mkdir(parents=True)
     fake_qgis_bin = fake_qgis_root / "qgis-ltr-bin.exe"
@@ -65,10 +68,51 @@ def test_qgis_python_executable_windows_qgis_uses_sys_prefix(monkeypatch, tmp_pa
     monkeypatch.setattr(ai.sys, "platform", "win32")
     monkeypatch.setattr(ai.sys, "executable", str(fake_qgis_bin))
     monkeypatch.setattr(ai.sys, "prefix", str(fake_python_root))
+    # Forzar estrategia 4: simular os.__file__ apuntando a un lugar fake
+    # donde NO existe python.exe arriba (así estrategia 3 falla y caemos
+    # a sys.prefix).
+    monkeypatch.setattr(ai.os, "__file__", str(tmp_path / "nowhere" / "Lib" / "os.py"))
 
     result = ai.qgis_python_executable()
     assert result == str(fake_python_exe)
     assert "qgis" not in os.path.basename(result).lower()
+
+
+def test_qgis_python_executable_windows_uses_os_dunder_file(monkeypatch, tmp_path):
+    """Estrategia 3 (la más robusta): derivar python.exe desde os.__file__.
+
+    Funciona aún si sys.prefix está apuntando mal (caso QGIS-Windows con
+    embebedor que setea sys.prefix al QGIS root en vez del Python root).
+    """
+    # Python root simulado: <tmp>/PythonReal con Lib/os.py y python.exe.
+    python_root = tmp_path / "PythonReal"
+    lib_dir = python_root / "Lib"
+    lib_dir.mkdir(parents=True)
+    fake_os_py = lib_dir / "os.py"
+    fake_os_py.write_text("# fake os")
+    fake_python_exe = python_root / "python.exe"
+    fake_python_exe.write_bytes(b"")
+
+    # Sys.prefix apunta a un directorio DISTINTO sin python.exe — la
+    # estrategia 4 fallaría, pero la 3 (os.__file__) debe rescatarnos.
+    wrong_prefix = tmp_path / "QgisRootWrong"
+    wrong_prefix.mkdir()
+
+    monkeypatch.setattr(ai.sys, "platform", "win32")
+    monkeypatch.setattr(ai.sys, "executable", str(tmp_path / "qgis-bin.exe"))
+    monkeypatch.setattr(ai.sys, "prefix", str(wrong_prefix))
+    monkeypatch.setattr(ai.sys, "exec_prefix", str(wrong_prefix))
+    monkeypatch.setattr(ai.sys, "base_prefix", str(wrong_prefix))
+    monkeypatch.setattr(ai.os, "__file__", str(fake_os_py))
+
+    assert ai.qgis_python_executable() == str(fake_python_exe)
+
+
+def test_qgis_python_diagnostics_returns_keys():
+    """Diagnóstico expone los campos que necesitamos en reportes de bug."""
+    info = ai.qgis_python_diagnostics()
+    for key in ("platform", "sys.executable", "sys.prefix", "resolved_python"):
+        assert key in info, f"Falta key '{key}' en diagnostics"
 
 
 def test_qgis_python_executable_windows_real_python_passthrough(monkeypatch, tmp_path):
@@ -85,7 +129,11 @@ def test_qgis_python_executable_windows_real_python_passthrough(monkeypatch, tmp
 
 
 def test_qgis_python_executable_windows_python3_exe_fallback(monkeypatch, tmp_path):
-    """Algunas distribuciones embeben python3.exe en vez de python.exe."""
+    """Algunas distribuciones embeben python3.exe en vez de python.exe.
+
+    Aislamos os.__file__ a un directorio sin python.exe para forzar la
+    caída a estrategia 4 (sys.prefix).
+    """
     fake_qgis_bin = tmp_path / "qgis-bin.exe"
     fake_qgis_bin.write_bytes(b"")
     fake_python_root = tmp_path / "apps" / "Python311"
@@ -96,6 +144,7 @@ def test_qgis_python_executable_windows_python3_exe_fallback(monkeypatch, tmp_pa
     monkeypatch.setattr(ai.sys, "platform", "win32")
     monkeypatch.setattr(ai.sys, "executable", str(fake_qgis_bin))
     monkeypatch.setattr(ai.sys, "prefix", str(fake_python_root))
+    monkeypatch.setattr(ai.os, "__file__", str(tmp_path / "nowhere" / "Lib" / "os.py"))
 
     assert ai.qgis_python_executable() == str(fake_python3)
 

@@ -14,12 +14,13 @@ GDAL/rasterio que QGIS ya provee.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from . import qgis_python_executable
+from . import qgis_python_diagnostics, qgis_python_executable
 
 # Callback invocado por cada línea de stdout/stderr del proceso pip.
 # El UI lo usa para actualizar una QProgressDialog con texto.
@@ -98,6 +99,41 @@ def install_package(
     """
     cmd = _pip_command(package, version, extras)
     output_lines: List[str] = []
+
+    # Diagnóstico al inicio del log: si algo falla, el reporte de bug
+    # incluye sys.executable / sys.prefix / resolved_python para que
+    # podamos arreglar la detección en futuras versiones.
+    diag = qgis_python_diagnostics()
+    diag_lines = ["[pudumaps-ai diagnostics]"] + [
+        f"  {k} = {v}" for k, v in diag.items()
+    ]
+    for line in diag_lines:
+        output_lines.append(line)
+        if progress_cb is not None:
+            try:
+                progress_cb(line)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Defensa: si el python resuelto no es un archivo, abortar antes
+    # de invocar subprocess (que produciría el error críptico actual).
+    python_exe = cmd[0]
+    base = os.path.basename(python_exe).lower()
+    if not os.path.isfile(python_exe) or not (
+        base.startswith("python") and base.endswith(".exe")
+    ) and sys.platform == "win32":
+        return InstallResult(
+            package=package,
+            version=version,
+            success=False,
+            exit_code=-4,
+            output="\n".join(output_lines),
+            error_message=(
+                f"No se pudo localizar python.exe del Python embebido de QGIS. "
+                f"Resolví: {python_exe}. "
+                f"Reporta este bug con el bloque [pudumaps-ai diagnostics] del log."
+            ),
+        )
 
     try:
         process = subprocess.Popen(  # noqa: S603 (cmd construido localmente)

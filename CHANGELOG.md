@@ -3,6 +3,37 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.8] — 2026-05-18
+
+### Fixed
+- **Hotfix más robusto** sobre el de 0.7.7. La estrategia "derivar
+  python.exe desde `sys.prefix`" no cubría todas las layouts de
+  QGIS-Windows — algunas distribuciones tienen `sys.prefix` apuntando
+  al root de QGIS, no al directorio del Python embebido. El usuario
+  seguía viendo el mismo error "could not be found".
+- **Nueva estrategia primaria**: derivar desde `os.__file__`, que
+  SIEMPRE apunta a `<python_root>/Lib/os.py`. Esto es independiente
+  de cómo el embebedor de QGIS haya configurado `sys.prefix`.
+- Cadena de fallbacks: `os.__file__` → todos los prefijos
+  (`prefix`/`exec_prefix`/`base_prefix`) × nombres
+  (python.exe/python3.exe/pythonw.exe) → subdirs (Scripts/bin) →
+  layout OSGeo4W (`apps/Python*/python.exe`) → último recurso
+  `sys.executable`.
+
+### Added
+- **Defensa en el instalador**: valida que el python resuelto sea un
+  archivo real antes de invocar `subprocess`. Si la detección falla,
+  error claro (`No se pudo localizar python.exe…`) en vez del
+  críptico "Status 2: File … could not be found".
+- **Diagnóstico al inicio del log de pip**:
+  `[pudumaps-ai diagnostics]` con `sys.executable`, `sys.prefix`,
+  `sys.exec_prefix`, `sys.base_prefix`, `os.__file__`, `resolved_python`.
+  Si hay nuevos reportes de bug, traerán este bloque y podremos
+  diagnosticar de inmediato qué layout no estamos cubriendo.
+- Nueva función `qgis_python_diagnostics()` exportada.
+- 2 tests nuevos cubriendo la estrategia `os.__file__` y el contrato
+  de `qgis_python_diagnostics()`.
+
 ## [0.7.7] — 2026-05-18
 
 ### Fixed
