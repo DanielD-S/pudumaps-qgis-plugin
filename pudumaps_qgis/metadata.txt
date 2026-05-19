@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.12
+version=0.7.13
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,20 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.12 (2026-05-18) — Auto-uninstall pyarrow + RGB renderer
+changelog=0.7.13 (2026-05-19) — Fix extract_buildings flow + mejor mensaje vacío
+  * BUG REPORTADO en 0.7.12: extract_buildings corría 1 min y fallaba
+    silenciosamente con "geoai no produjo el archivo de máscaras".
+    Causa: mi código asumía que process_raster() escribe un GeoTIFF
+    de máscaras intermedio (entonces vectorizar después), pero
+    realmente process_raster() es la pipeline COMPLETA: tile, infer,
+    vectorize, escribir GeoJSON. Devuelve GeoDataFrame directo.
+  * Rewrite: ya no se genera _masks.tif intermedio. process_raster
+    se invoca con output_path=geojson y listo. Si devuelve None pero
+    escribió, leemos el GeoJSON. Si no escribe nada (0 detecciones),
+    mensaje explícito al usuario con sugerencias (orto ≤1m/px en vez
+    de Sentinel 10m/px).
+
+ 0.7.12 (2026-05-18) — Auto-uninstall pyarrow + RGB renderer
   * BUG CULPABLE IDENTIFICADO: pyarrow.lib choca con DLLs C++ de QGIS
     causando "DLL load failed while importing lib". Auto-uninstall en
     el cleanup post-instalación (sklearn lo importa defensivamente y

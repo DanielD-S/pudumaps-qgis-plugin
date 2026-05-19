@@ -132,16 +132,22 @@ def _run_geoai_buildings(
 ) -> int:
     """Llamada a la API real de geoai 0.10.x.
 
-    geoai.BuildingFootprintExtractor extiende ObjectDetector. El método
-    principal es `process_raster(raster_path, output_path=...)` (NO
-    `predict()`). Salida: GeoTIFF con máscaras + GeoJSON con polígonos.
+    geoai.BuildingFootprintExtractor.process_raster() es la pipeline
+    completa: tile → infer → vectorize → escribe GeoJSON. Devuelve un
+    GeoDataFrame Y escribe a `output_path` si se provee.
+
+    El método acepta kwargs útiles:
+    - confidence_threshold (default 0.5): min score para retener detección
+    - chip_size (default 512): tamaño del tile de inferencia
+    - min_object_area: filtro de área mínima en pixels
+    - filter_edges (default True): descarta detecciones tocando el borde
+    - regularize (interno): ortogonaliza polígonos detectados
 
     Si la API cambia entre versiones del paquete, este helper es el
-    único lugar a tocar. Por eso pineamos versión exacta en
-    `pudumaps_qgis/ai/__init__.py`.
+    único lugar a tocar.
 
     Returns:
-        Número de edificaciones detectadas (best-effort).
+        Número de edificaciones detectadas.
     """
     _emit(progress_cb, "Importando geoai…")
     import geoai  # noqa: F401  (chequea que el módulo carga)
@@ -159,86 +165,61 @@ def _run_geoai_buildings(
 
     extractor = BuildingFootprintExtractor()
 
-    # process_raster() puede escribir directamente al output (GeoTIFF
-    # con máscara). Pero queremos vectorial — así que pedimos un GeoTIFF
-    # intermedio y después llamamos masks_to_vector().
     import os as _os
-    masks_geotiff = output_path.replace(".geojson", "_masks.tif")
-    if not masks_geotiff.endswith(".tif"):
-        masks_geotiff = output_path + ".tif"
 
     _emit(progress_cb, "Ejecutando inferencia sobre raster (puede tardar varios minutos)…")
+    # process_raster() hace toda la pipeline: tile, infer, vectorize, escribir.
+    # Devuelve un GeoDataFrame. Si output_path se pasa, también escribe a disco.
     try:
-        extractor.process_raster(
-            raster_path,
-            output_path=masks_geotiff,
+        gdf = extractor.process_raster(
+            raster_path=raster_path,
+            output_path=output_path,
         )
     except TypeError:
-        # Algunas versiones no aceptan output_path como kwarg; intentar posicional.
-        extractor.process_raster(raster_path, masks_geotiff)
+        # Fallback posicional si el orden de kwargs cambia entre versiones.
+        gdf = extractor.process_raster(raster_path, output_path)
 
-    if not _os.path.exists(masks_geotiff):
+    # Algunas versiones devuelven None aunque escriban a disco — chequeamos
+    # ambos casos.
+    if gdf is None and not _os.path.exists(output_path):
         raise AIToolError(
-            "geoai no produjo el archivo de máscaras esperado. "
-            "Probablemente no se detectaron edificios en el área, o el modelo "
-            "rinde mal sobre este tipo de imagen (ver docs/modelos-chile.md)."
+            "geoai no produjo output. Probablemente no se detectaron "
+            "edificios en el área, o el modelo rinde mal sobre este "
+            "tipo de imagen (ver docs/modelos-chile.md). Para Sentinel-2 "
+            "10m/px solo se detectan edificios grandes; mejor usar "
+            "ortofoto ≤1m/px."
         )
 
-    _emit(progress_cb, "Vectorizando máscaras a polígonos…")
-    if hasattr(extractor, "masks_to_vector"):
-        gdf = extractor.masks_to_vector(masks_geotiff, output_path=output_path)
-    elif hasattr(extractor, "vectorize_masks"):
-        gdf = extractor.vectorize_masks(masks_geotiff, output_path=output_path)
-    else:
-        # Último recurso: usar rasterio + shapely para vectorizar manualmente.
-        gdf = _vectorize_with_rasterio(masks_geotiff, output_path, progress_cb)
-
-    # Si la API no escribió el GeoJSON pero devolvió un GeoDataFrame, lo escribimos.
-    if not _os.path.exists(output_path):
-        if gdf is None:
-            raise AIToolError("Vectorización no produjo salida.")
+    # Si gdf es válido pero el archivo no se escribió, lo escribimos a mano.
+    if gdf is not None and not _os.path.exists(output_path):
         gdf.to_file(output_path, driver="GeoJSON")
 
-    # Cleanup del raster intermedio.
-    try:
-        _os.remove(masks_geotiff)
-    except OSError:
-        pass
+    # Si el archivo existe pero gdf es None, lo leemos para contar features.
+    if gdf is None:
+        try:
+            import geopandas as gpd
+            gdf = gpd.read_file(output_path)
+        except Exception:  # noqa: BLE001
+            return 0
 
     try:
-        return int(len(gdf)) if gdf is not None else 0
+        n = int(len(gdf))
     except Exception:  # noqa: BLE001
-        return 0
+        n = 0
 
+    if n == 0:
+        # Edge case: el método corrió OK pero no detectó nada. Avisar al
+        # usuario explícitamente en vez de mostrar capa vacía.
+        raise AIToolError(
+            "No se detectaron edificios en el raster. Posibles causas:\n"
+            "- Imagen Sentinel a 10m/px: solo detecta edificios grandes "
+            "(>200 m²). Prueba ortofoto IDE Chile.\n"
+            "- Área no urbana o muy nublada.\n"
+            "- Modelo (USA) rinde mal en zonas rurales chilenas."
+        )
 
-def _vectorize_with_rasterio(
-    raster_path: str,
-    output_path: str,
-    progress_cb: Optional[ProgressCallback],
-):
-    """Fallback puro python para vectorizar una máscara raster.
-
-    Solo se usa si geoai.BuildingFootprintExtractor no expone
-    masks_to_vector ni vectorize_masks (improbable, pero defensivo).
-    """
-    _emit(progress_cb, "Fallback: vectorizando con rasterio…")
-    import geopandas as gpd
-    import rasterio
-    from rasterio.features import shapes
-    from shapely.geometry import shape
-
-    with rasterio.open(raster_path) as ds:
-        mask = ds.read(1)
-        transform = ds.transform
-        crs = ds.crs
-
-    polys = []
-    for geom, val in shapes(mask, mask=mask > 0, transform=transform):
-        polys.append(shape(geom))
-
-    gdf = gpd.GeoDataFrame(geometry=polys, crs=crs)
-    gdf.to_file(output_path, driver="GeoJSON")
-    return gdf
+    _emit(progress_cb, f"Detectados {n} edificios.")
+    return n
 
 
 __all__ = ["ExtractBuildingsTool"]
