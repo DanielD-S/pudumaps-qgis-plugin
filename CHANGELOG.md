@@ -3,6 +3,42 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.5] — 2026-05-18
+
+### Added
+- **Cuarta acción IA**: `change_detection.py` (`ChangeDetectionTool`):
+  - Compara dos rásters del mismo bbox y distinta fecha, produce
+    raster máscara binaria (1 = cambio, 0 = sin cambio).
+  - Llamada geoai/torchange aislada en `_run_geoai_change()`. Intenta
+    `ChangeDetector`, cae a `detect_changes()` / `change_detection()`
+    según versión upstream.
+  - Validación de paths (existen, no son iguales) antes de tocar
+    geoai, con errores específicos por raster ("antes" / "después").
+- **Patrón nuevo del framework** para tools sin capa activa:
+  - `AITool.input_kind = "none"` indica al panel que salte la
+    validación de la capa activa.
+  - `AITool.prompt_params(parent, iface) → Optional[Dict]` permite a
+    cualquier tool pedir input vía diálogo propio. Default `{}` deja
+    pasar las tools simples (buildings/water/landcover) sin override.
+  - `dialogs/ai_panel.py` ejecuta el hook entre validación y task. Si
+    devuelve `None` (usuario canceló) la ejecución se aborta limpio.
+- **Diálogo de selección** `dialogs/change_detection_dialog.py`:
+  - Lista los `QgsRasterLayer` del proyecto con path en disco.
+  - Bloquea "Ejecutar" si hay <2 rásters cargados.
+  - Pre-selecciona el segundo raster como "después" para acelerar UX.
+  - Rechaza la combinación "antes == después".
+- 8 tests nuevos en `tests/test_ai_tools.py`:
+  - `ChangeDetectionTool` (`input_kind="none"`, output `.tif`,
+    validación de params, paths inexistentes, mismo raster, falta de
+    geoai, presencia en registry).
+  - Default `prompt_params() == {}` para tools simples.
+
+### Notes
+- Acción restante: `download_sentinel` (bbox del canvas, sin input
+  layer; usa el patrón nuevo). Llega en **0.7.6**.
+- El `change_detection_dialog` requiere QGIS runtime y por eso no
+  tiene tests unitarios — se cubrirá en el smoke test manual de QA.
+
 ## [0.7.4] — 2026-05-18
 
 ### Added

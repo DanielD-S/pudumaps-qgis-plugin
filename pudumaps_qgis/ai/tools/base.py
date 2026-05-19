@@ -60,8 +60,13 @@ class AITool(ABC):
     description: str = ""
     requires: List[str] = []  # ["geoai"], ["geoai", "geoagent"], ...
 
-    # Tipo de input esperado: "raster" o "vector".
-    # El panel usa esto para auto-seleccionar la capa activa correcta.
+    # Tipo de input esperado: "raster", "vector" o "none".
+    # - "raster"/"vector": el panel auto-selecciona la capa activa y la
+    #   valida con `validate_input()` antes de ejecutar.
+    # - "none": la tool NO usa la capa activa. Su input completo viene
+    #   de `prompt_params()` (ej. change_detection pide 2 rásters,
+    #   download_sentinel pide bbox+fechas). El panel saltea
+    #   `validate_input()` para estas tools.
     input_kind: str = "raster"
 
     # Sufijo del archivo de salida que esta tool produce. El panel usa
@@ -134,6 +139,24 @@ class AITool(ABC):
             AIToolUnavailable: faltan dependencias.
             AIToolError: input inválido o fallo de inferencia.
         """
+
+    # ── Hook opcional para tools que necesitan parámetros extra ────
+
+    def prompt_params(self, parent=None, iface=None) -> Optional[Dict]:
+        """Pide parámetros adicionales al usuario antes de ejecutar.
+
+        Override en subclases que necesitan input más allá de la capa
+        activa (ej. seleccionar un segundo raster, fechas, bbox custom).
+
+        Returns:
+            - Dict con los parámetros: se pasarán a `run(..., params=...)`.
+            - None: usuario canceló — el panel aborta la ejecución.
+            - {} (default): no se necesitan parámetros extra; ejecutar.
+
+        El default `return {}` deja a las tools simples (buildings,
+        water, landcover) sin necesidad de override.
+        """
+        return {}
 
     # ── Helper común ────────────────────────────────────────────────
 
