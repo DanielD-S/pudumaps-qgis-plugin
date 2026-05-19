@@ -3,6 +3,54 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.6] — 2026-05-18
+
+### Added
+- **Quinta y última acción del plan IA original**: `download_sentinel.py`
+  (`DownloadSentinelTool`):
+  - Descarga composición RGB Sentinel-2 sobre bbox + rango de fechas.
+  - `input_kind="none"` + `prompt_params` para bbox / fechas / cloud
+    cover. Pre-selecciona el extent actual del canvas QGIS
+    (reproyectado a EPSG:4326).
+  - Llamada geoai aislada en `_run_geoai_download()` (intenta
+    `download_sentinel2`, cae a `download_sentinel`).
+- **Diálogo** `dialogs/download_sentinel_dialog.py`:
+  - Radio buttons: "Usar extent del canvas" vs "Coordenadas custom".
+  - 4 `QDoubleSpinBox` para xmin/ymin/xmax/ymax en EPSG:4326.
+  - `QDateEdit` con calendario popup para fechas (default últimos 30 días).
+  - `QSpinBox` 0-100% para cloud cover (default 20%).
+  - Helper `_canvas_bbox_4326()` reproyecta el extent del canvas a
+    WGS84 si el proyecto está en otro CRS.
+- **Validación defensiva** en la tool antes de tocar la red:
+  - bbox inválido (xmin >= xmax / ymin >= ymax).
+  - bbox >5° de ancho o alto → rechazado para evitar descargas masivas
+    (mensaje sugiere recortar).
+  - Fechas invertidas o anteriores al lanzamiento Sentinel-2
+    (2015-06-23) → mensaje específico.
+  - `cloud_max` fuera de 0-100 → error claro.
+- **11 tests nuevos** en `tests/test_ai_tools.py` cubriendo cada
+  validación + `AIToolUnavailable` + presencia en registry. También
+  un test de cierre que verifica las 5 acciones del plan original.
+
+### Notes — cierre del ciclo IA v0.7.x
+
+Las 5 acciones del plan original están operativas:
+
+| Acción | Versión | Tipo de input | Output |
+|---|---|---|---|
+| `extract_buildings` | 0.7.2 | Raster RGB | GeoJSON polígonos |
+| `extract_water` | 0.7.3 | Raster RGB | GeoJSON polígonos |
+| `landcover_classification` | 0.7.4 | Raster RGB | GeoTIFF + leyenda JSON Chile |
+| `change_detection` | 0.7.5 | 2 rásters | GeoTIFF máscara binaria |
+| `download_sentinel` | 0.7.6 | bbox + fechas | GeoTIFF Sentinel-2 |
+
+Próximo (v0.8.0): **Nivel 2 chilenización** — finetuneo gratis en
+Kaggle/Colab de modelos chilenos (`pudumaps/buildings-rural-cl-v1`,
+`bosque-nativo-cl-v1`, `tomas-cl-v1`) sobre datasets públicos
+(CONAF, MINVU, CBR), publicados en Hugging Face Hub.
+
+Sin `geoai` instalado todo sigue inerte como en versiones anteriores.
+
 ## [0.7.5] — 2026-05-18
 
 ### Added

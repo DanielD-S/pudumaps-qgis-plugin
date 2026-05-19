@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.5
+version=0.7.6
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,22 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.5 (2026-05-18) — Change detection + framework prompt_params
+changelog=0.7.6 (2026-05-18) — Download Sentinel-2 + cierre 5 acciones
+  * Quinta y última acción del plan IA original: "Descargar
+    Sentinel-2" (DownloadSentinelTool). Bbox del canvas (o custom
+    EPSG:4326) + rango de fechas + cloud cover máximo. Resultado
+    GeoTIFF cargado como capa raster.
+  * Diálogo de configuración con extent del canvas pre-seleccionado,
+    QDateEdit con calendarios, spinbox de nubosidad %.
+  * Validación defensiva: rechaza bbox >5° (descargas masivas),
+    fechas invertidas, rango pre-Sentinel-2 (antes 2015-06-23),
+    cloud_max fuera de 0-100.
+  * Ciclo v0.7.x cerrado: las 5 acciones del plan IA están
+    operativas — buildings, water, landcover, change_detection,
+    download_sentinel. v0.8.0 arranca con Nivel 2 chilenización
+    (modelos finetuneados sobre datasets chilenos).
+
+ 0.7.5 (2026-05-18) — Change detection + framework prompt_params
   * Cuarta acción IA: "Detectar cambios (2 rásters)"
     (ChangeDetectionTool). Compara dos rásters del mismo bbox y
     distinta fecha, produce máscara binaria de cambios.

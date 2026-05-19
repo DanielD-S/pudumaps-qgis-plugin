@@ -19,6 +19,7 @@ import pytest
 from pudumaps_qgis.ai.tools import AITool, AIToolError, AIToolUnavailable
 from pudumaps_qgis.ai.tools import registry as registry_mod
 from pudumaps_qgis.ai.tools.change_detection import ChangeDetectionTool
+from pudumaps_qgis.ai.tools.download_sentinel import DownloadSentinelTool
 from pudumaps_qgis.ai.tools.extract_buildings import ExtractBuildingsTool
 from pudumaps_qgis.ai.tools.extract_water import ExtractWaterTool
 from pudumaps_qgis.ai.tools.landcover_classification import LandCoverClassificationTool
@@ -442,3 +443,152 @@ def test_change_detection_run_without_geoai_raises_unavailable(monkeypatch):
 
 def test_registry_includes_change_detection():
     assert "change_detection" in registry_mod.tool_ids()
+
+
+# ── DownloadSentinelTool ─────────────────────────────────────────────────
+
+
+def test_download_sentinel_metadata():
+    assert DownloadSentinelTool.id == "download_sentinel"
+    assert DownloadSentinelTool.input_kind == "none"
+    assert DownloadSentinelTool.output_suffix == ".tif"
+    assert "geoai" in DownloadSentinelTool.requires
+
+
+def test_download_sentinel_validate_input_always_ok():
+    """input_kind='none' → validate_input no rechaza nada."""
+    tool = DownloadSentinelTool()
+    assert tool.validate_input(None) is None
+    assert tool.validate_input(_FakeRasterLayer()) is None
+
+
+def test_download_sentinel_run_requires_bbox(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = DownloadSentinelTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={"date_start": "2024-01-01", "date_end": "2024-01-30"},
+        )
+    assert "bbox" in str(exc.value).lower()
+
+
+def test_download_sentinel_run_rejects_invalid_bbox(monkeypatch):
+    """xmin >= xmax debe rechazarse con mensaje claro."""
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = DownloadSentinelTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={
+                "bbox": (-70, -33, -71, -32),  # xmin > xmax
+                "date_start": "2024-01-01",
+                "date_end": "2024-01-30",
+                "cloud_max": 20,
+            },
+        )
+    assert "inválido" in str(exc.value).lower()
+
+
+def test_download_sentinel_run_rejects_huge_bbox(monkeypatch):
+    """bbox >5° en ancho/alto se rechaza para evitar descargas masivas."""
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = DownloadSentinelTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={
+                "bbox": (-75, -45, -65, -25),  # 10° ancho, 20° alto
+                "date_start": "2024-01-01",
+                "date_end": "2024-01-30",
+                "cloud_max": 20,
+            },
+        )
+    assert "grande" in str(exc.value).lower()
+
+
+def test_download_sentinel_run_rejects_inverted_dates(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = DownloadSentinelTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={
+                "bbox": (-70.7, -33.5, -70.6, -33.4),
+                "date_start": "2024-06-01",
+                "date_end": "2024-01-01",
+                "cloud_max": 20,
+            },
+        )
+    assert "anterior" in str(exc.value).lower()
+
+
+def test_download_sentinel_run_rejects_pre_sentinel_era(monkeypatch):
+    """Fechas antes del 2015-06-23 (launch S-2A) deben rechazarse."""
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = DownloadSentinelTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={
+                "bbox": (-70.7, -33.5, -70.6, -33.4),
+                "date_start": "2010-01-01",
+                "date_end": "2010-06-01",
+                "cloud_max": 20,
+            },
+        )
+    assert "2015" in str(exc.value)
+
+
+def test_download_sentinel_run_rejects_cloud_max_out_of_range(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = DownloadSentinelTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={
+                "bbox": (-70.7, -33.5, -70.6, -33.4),
+                "date_start": "2024-01-01",
+                "date_end": "2024-01-30",
+                "cloud_max": 200,
+            },
+        )
+    assert "100" in str(exc.value)
+
+
+def test_download_sentinel_run_without_geoai_raises_unavailable(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(AIToolUnavailable):
+        DownloadSentinelTool().run(
+            raster_path="",
+            output_path="/tmp/out.tif",
+            params={
+                "bbox": (-70.7, -33.5, -70.6, -33.4),
+                "date_start": "2024-01-01",
+                "date_end": "2024-01-30",
+                "cloud_max": 20,
+            },
+        )
+
+
+def test_registry_includes_download_sentinel():
+    assert "download_sentinel" in registry_mod.tool_ids()
+
+
+def test_registry_has_all_five_actions():
+    """Cierre del ciclo IA v0.7.x: las 5 acciones del plan original."""
+    ids = set(registry_mod.tool_ids())
+    expected = {
+        "extract_buildings",
+        "extract_water",
+        "landcover_classification",
+        "change_detection",
+        "download_sentinel",
+    }
+    assert expected.issubset(ids)
