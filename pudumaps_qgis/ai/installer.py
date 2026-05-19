@@ -48,7 +48,12 @@ class InstallError(Exception):
     """
 
 
-def _pip_command(package: str, version: Optional[str], extras: Optional[str]) -> List[str]:
+def _pip_command(
+    package: str,
+    version: Optional[str],
+    extras: Optional[str],
+    index_url: Optional[str] = None,
+) -> List[str]:
     """Construye el comando pip pineando versión si se provee.
 
     Ejemplos:
@@ -56,13 +61,20 @@ def _pip_command(package: str, version: Optional[str], extras: Optional[str]) ->
             → [..., "geoai-py==0.10.0"]
         _pip_command("GeoAgent", "0.4.0", "ollama,geoai")
             → [..., "GeoAgent[ollama,geoai]==0.4.0"]
+        _pip_command("torch", None, None, index_url="https://download.pytorch.org/whl/cpu")
+            → [..., "--index-url", "https://download.pytorch.org/whl/cpu", "torch"]
+
+    Args:
+        index_url: si se provee, fuerza a pip a usar ese índice EN LUGAR
+            del default PyPI. Necesario para forzar CPU-only de PyTorch
+            (https://download.pytorch.org/whl/cpu).
     """
     spec = package
     if extras:
         spec = f"{spec}[{extras}]"
     if version:
         spec = f"{spec}=={version}"
-    return [
+    cmd = [
         qgis_python_executable(),
         "-m",
         "pip",
@@ -70,14 +82,18 @@ def _pip_command(package: str, version: Optional[str], extras: Optional[str]) ->
         "--user",
         "--disable-pip-version-check",
         "--no-input",
-        spec,
     ]
+    if index_url:
+        cmd.extend(["--index-url", index_url])
+    cmd.append(spec)
+    return cmd
 
 
 def install_package(
     package: str,
     version: Optional[str] = None,
     extras: Optional[str] = None,
+    index_url: Optional[str] = None,
     progress_cb: Optional[ProgressCallback] = None,
     timeout_s: int = 1800,
 ) -> InstallResult:
@@ -97,7 +113,7 @@ def install_package(
     Returns:
         InstallResult con success, exit_code y output combinados.
     """
-    cmd = _pip_command(package, version, extras)
+    cmd = _pip_command(package, version, extras, index_url=index_url)
     output_lines: List[str] = []
 
     # Diagnóstico al inicio del log: si algo falla, el reporte de bug

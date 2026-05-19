@@ -38,6 +38,23 @@ def test_pip_command_uses_qgis_python():
     assert cmd[1:5] == ["-m", "pip", "install", "--user"]
 
 
+def test_pip_command_with_index_url():
+    """index_url se inserta antes del spec del paquete (orden requerido por pip)."""
+    cmd = _pip_command("torch", None, None, index_url="https://download.pytorch.org/whl/cpu")
+    assert "--index-url" in cmd
+    idx = cmd.index("--index-url")
+    assert cmd[idx + 1] == "https://download.pytorch.org/whl/cpu"
+    assert "torch" in cmd
+    # El spec del paquete debe venir DESPUÉS del index-url.
+    assert cmd.index("torch") > idx
+
+
+def test_pip_command_no_index_url_means_default_pypi():
+    """Sin index_url, no se agrega ningún --index-url (usa default PyPI)."""
+    cmd = _pip_command("geoai-py", "0.10.0", None)
+    assert "--index-url" not in cmd
+
+
 def test_pip_command_pins_version():
     """La versión se pega al spec con '=='."""
     cmd = _pip_command("geoai-py", "0.10.0", None)
