@@ -3,6 +3,46 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.4] — 2026-05-18
+
+### Added
+- **Tercera acción IA**: `landcover_classification.py`
+  (`LandCoverClassificationTool`):
+  - Clasifica cada píxel de un raster RGB en categorías de uso de
+    suelo (built / forest / water / cropland / shrubland / bare).
+  - Produce GeoTIFF categórico + sidecar `<output>.classes.json`
+    con la leyenda. La leyenda se re-etiqueta al español + ecorregión
+    chilena cuando el bbox cae en Chile.
+  - Wrapper aislado en `_run_geoai_landcover()` (intenta
+    `LandCoverClassifier`, cae a `classify_landcover()` /
+    `predict_landcover()`).
+- **Nivel 1 chilenización en código** — nuevo módulo
+  `pudumaps_qgis/ai/chile_classes.py`:
+  - `ecoregion_for_bbox(bbox)` infiere zona chilena por lat/lon
+    (Atacama / Matorral xerófilo / Matorral esclerófilo / Bosque
+    templado lluvioso / Bosque siempreverde / Estepa patagónica).
+  - `translate_class(name, bbox=...)` mapea nombres genéricos en
+    inglés a vocabulario chileno por ecorregión. Sin ML — lookup puro.
+  - Fuera de Chile o sin bbox → traducción genérica en español.
+- **`AITool.output_suffix`** (default `.geojson`): permite a cada tool
+  declarar qué tipo de archivo produce. Buildings/water = `.geojson`,
+  landcover = `.tif`. El panel ahora dispatcha
+  `QgsVectorLayer`/`QgsRasterLayer` por extensión del output.
+- 29 tests nuevos: 20 en `tests/test_chile_classes.py` (ecorregiones
+  Santiago/Atacama/Patagonia/Valdivia/Chiloé/fuera de Chile +
+  traducciones por zona) + 9 en `tests/test_ai_tools.py`
+  (`LandCoverClassificationTool` validación, registro, output_suffix).
+
+### Changed
+- `dialogs/ai_panel.py` — `_load_result_as_layer` despacha por
+  extensión (`.tif|.tiff|.vrt|.img` → raster, resto → vector).
+
+### Notes
+- Acciones restantes: `change_detection` y `download_sentinel` llegan
+  en 0.7.5 (rompen el patrón "una sola capa activa de input": una
+  necesita selector de 2 rásters, la otra usa el bbox del canvas).
+- Sin `geoai` instalado, la nueva acción queda inerte como las otras.
+
 ## [0.7.3] — 2026-05-18
 
 ### Added

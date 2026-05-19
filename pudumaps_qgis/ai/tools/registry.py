@@ -19,11 +19,13 @@ from typing import List, Optional, Type
 from .base import AITool
 from .extract_buildings import ExtractBuildingsTool
 from .extract_water import ExtractWaterTool
+from .landcover_classification import LandCoverClassificationTool
 
 # Orden visible en el panel (top → bottom).
 _TOOL_CLASSES: List[Type[AITool]] = [
     ExtractBuildingsTool,
     ExtractWaterTool,
+    LandCoverClassificationTool,
 ]
 
 

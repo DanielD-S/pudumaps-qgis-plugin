@@ -145,7 +145,7 @@ class AIToolsDock(QDockWidget):
             )
             return
 
-        output_path = _temp_output_path(tool.id, suffix=".geojson")
+        output_path = _temp_output_path(tool.id, suffix=tool.output_suffix)
 
         # Import lazy: QgsApplication y AIToolTask solo cuando hace falta.
         from qgis.core import QgsApplication
@@ -217,14 +217,29 @@ def _temp_output_path(tool_id: str, suffix: str = ".geojson") -> str:
     return path
 
 
+_RASTER_EXTS = {".tif", ".tiff", ".vrt", ".img"}
+_VECTOR_EXTS = {".geojson", ".gpkg", ".shp", ".kml", ".json"}
+
+
 def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
-    """Carga el GeoJSON resultante como capa vectorial en el proyecto."""
+    """Carga el resultado como capa en el proyecto QGIS.
+
+    Despacha por extensión: GeoTIFF/VRT → `QgsRasterLayer`, GeoJSON/GPKG/
+    SHP → `QgsVectorLayer`. Extensiones desconocidas se intentan como
+    vector primero (cubre el caso más común).
+    """
     if iface is None:
         return
+    ext = os.path.splitext(path)[1].lower()
     try:
-        from qgis.core import QgsProject, QgsVectorLayer
+        from qgis.core import QgsProject, QgsRasterLayer, QgsVectorLayer
 
-        layer = QgsVectorLayer(path, layer_name, "ogr")
+        if ext in _RASTER_EXTS:
+            layer = QgsRasterLayer(path, layer_name)
+        else:
+            # _VECTOR_EXTS y fallback genérico.
+            layer = QgsVectorLayer(path, layer_name, "ogr")
+
         if not layer.isValid():
             toast_error(iface, "El resultado no se pudo cargar como capa.")
             return

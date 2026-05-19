@@ -64,6 +64,13 @@ class AITool(ABC):
     # El panel usa esto para auto-seleccionar la capa activa correcta.
     input_kind: str = "raster"
 
+    # Sufijo del archivo de salida que esta tool produce. El panel usa
+    # esto para crear el path temporal con la extensión correcta y para
+    # decidir si carga el resultado como QgsVectorLayer o QgsRasterLayer.
+    # Por defecto las tools de segmentación producen GeoJSON; las de
+    # clasificación pixel-wise producen GeoTIFF.
+    output_suffix: str = ".geojson"
+
     # ── API pública ─────────────────────────────────────────────────
 
     @classmethod

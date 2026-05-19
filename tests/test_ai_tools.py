@@ -20,6 +20,7 @@ from pudumaps_qgis.ai.tools import AITool, AIToolError, AIToolUnavailable
 from pudumaps_qgis.ai.tools import registry as registry_mod
 from pudumaps_qgis.ai.tools.extract_buildings import ExtractBuildingsTool
 from pudumaps_qgis.ai.tools.extract_water import ExtractWaterTool
+from pudumaps_qgis.ai.tools.landcover_classification import LandCoverClassificationTool
 
 
 # ── Helpers / fakes ──────────────────────────────────────────────────────
@@ -286,3 +287,69 @@ def test_registry_includes_water_and_buildings():
     ids = registry_mod.tool_ids()
     assert "extract_buildings" in ids
     assert "extract_water" in ids
+
+
+# ── LandCoverClassificationTool ──────────────────────────────────────────
+
+
+def test_landcover_id_and_output_suffix():
+    """Landcover produce raster .tif, no GeoJSON."""
+    assert LandCoverClassificationTool.id == "landcover_classification"
+    assert LandCoverClassificationTool.output_suffix == ".tif"
+    assert LandCoverClassificationTool.input_kind == "raster"
+    assert "geoai" in LandCoverClassificationTool.requires
+
+
+def test_landcover_rejects_none_layer():
+    msg = LandCoverClassificationTool().validate_input(None)
+    assert msg is not None
+
+
+def test_landcover_rejects_vector_layer():
+    msg = LandCoverClassificationTool().validate_input(_FakeVectorLayer())
+    assert msg is not None
+
+
+def test_landcover_rejects_single_band_raster():
+    msg = LandCoverClassificationTool().validate_input(_FakeRasterLayer(band_count=1))
+    assert msg is not None
+    assert "3" in msg
+
+
+def test_landcover_accepts_3band_raster():
+    msg = LandCoverClassificationTool().validate_input(_FakeRasterLayer(band_count=3))
+    assert msg is None
+
+
+def test_landcover_run_without_geoai_raises_unavailable(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    tool = LandCoverClassificationTool()
+    with pytest.raises(AIToolUnavailable):
+        tool.run(
+            raster_path="/no-importa.tif",
+            output_path="/no-importa.tif",
+        )
+
+
+def test_landcover_run_with_missing_raster_raises(monkeypatch):
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    tool = LandCoverClassificationTool()
+    with pytest.raises(AIToolError) as exc:
+        tool.run(
+            raster_path="/no-existe.tif",
+            output_path=os.path.join(tempfile.gettempdir(), "out.tif"),
+        )
+    assert "No existe" in str(exc.value)
+
+
+def test_registry_includes_landcover():
+    assert "landcover_classification" in registry_mod.tool_ids()
+
+
+# ── Default output_suffix is .geojson for back-compat ────────────────────
+
+
+def test_default_output_suffix_is_geojson():
+    """Buildings y water no declaran output_suffix → heredan .geojson."""
+    assert ExtractBuildingsTool.output_suffix == ".geojson"
+    assert ExtractWaterTool.output_suffix == ".geojson"
