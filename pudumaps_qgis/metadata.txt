@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.6
+version=0.7.7
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,16 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
 
-changelog=0.7.6 (2026-05-18) — Download Sentinel-2 + cierre 5 acciones
+changelog=0.7.7 (2026-05-18) — Hotfix: instalador IA en Windows
+  * BUG CRÍTICO: en QGIS-Windows sys.executable apunta al binario GUI
+    (qgis-bin.exe), no a python.exe. El instalador IA de 0.7.6 fallaba
+    "relanzando QGIS" en vez de invocar pip, con error críptico
+    'geoai-py==0.10.0 could not be found' (QGIS interpretaba la spec
+    como archivo de proyecto). Ahora deriva python.exe desde sys.prefix
+    que sí apunta consistentemente al Python embebido.
+  * Sin cambios funcionales. Tests +4.
+
+ 0.7.6 (2026-05-18) — Download Sentinel-2 + cierre 5 acciones
   * Quinta y última acción del plan IA original: "Descargar
     Sentinel-2" (DownloadSentinelTool). Bbox del canvas (o custom
     EPSG:4326) + rango de fechas + cloud cover máximo. Resultado

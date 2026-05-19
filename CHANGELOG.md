@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.7.7] — 2026-05-18
+
+### Fixed
+- **Hotfix crítico instalador IA en Windows.** En QGIS-Windows
+  `sys.executable` apunta al binario GUI (`qgis-bin.exe` o
+  `qgis-ltr-bin.exe`), NO a `python.exe`. El instalador 0.7.6 hacía
+  `subprocess.run([sys.executable, "-m", "pip", ...])` lo que
+  efectivamente **relanzaba QGIS** con los argumentos de pip — y QGIS
+  interpretaba el spec `geoai-py==0.10.0` como archivo de proyecto,
+  fallando con `Status 2: File … could not be found`.
+- `qgis_python_executable()` ahora deriva `python.exe` desde
+  `sys.prefix` (que siempre apunta al directorio del Python embebido,
+  típicamente `C:\Program Files\QGIS 3.X\apps\PythonXX\`).
+- Fallbacks: `python.exe` → `python3.exe` → `Scripts/python.exe` →
+  `bin/python.exe` → último recurso `sys.executable` original.
+- Linux/macOS sin cambios (`sys.executable` ya es correcto).
+- 4 tests nuevos en `test_ai_detection.py` reproduciendo el caso
+  Windows con `sys.executable=qgis-ltr-bin.exe` + paths fake.
+
 ## [0.7.6] — 2026-05-18
 
 ### Added

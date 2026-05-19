@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import os
 import sys
 from typing import Optional
 
@@ -76,12 +77,53 @@ def geoagent_matches_pin() -> bool:
 
 
 def qgis_python_executable() -> str:
-    """Path al intérprete Python embebido de QGIS.
+    r"""Path al intérprete Python embebido de QGIS.
 
     Usar este path (NO `python` del PATH) para invocar pip y asegurar
     que las dependencias se instalan donde QGIS las verá.
+
+    Gotcha Windows: en QGIS-Windows `sys.executable` apunta al **binario
+    GUI de QGIS** (`qgis-bin.exe` / `qgis-ltr-bin.exe`), NO a python.exe.
+    Si invocas `subprocess.run([sys.executable, "-m", "pip", ...])`,
+    Windows relanza QGIS con esos argumentos en vez de pip — y QGIS
+    interpreta "geoai-py==0.10.0" como un archivo de proyecto, fallando
+    con "could not be found".
+
+    `sys.prefix` sí apunta consistentemente al directorio de la
+    instalación de Python (en QGIS-Windows: `…\apps\PythonXX\`). Desde
+    ahí python.exe está garantizado.
+
+    Linux/macOS: `sys.executable` ya es python correcto.
     """
-    return sys.executable
+    # Linux / macOS: sys.executable es python correcto.
+    if sys.platform != "win32":
+        return sys.executable
+
+    # Windows: si sys.executable termina en python(.exe), usarlo.
+    exe = sys.executable
+    base = os.path.basename(exe).lower()
+    if base.startswith("python") and base.endswith(".exe"):
+        return exe
+
+    # Caso QGIS-Windows: derivar python.exe desde sys.prefix.
+    candidate = os.path.join(sys.prefix, "python.exe")
+    if os.path.isfile(candidate):
+        return candidate
+
+    # Algunas distribuciones de QGIS embeben python3.exe en vez de python.exe.
+    candidate3 = os.path.join(sys.prefix, "python3.exe")
+    if os.path.isfile(candidate3):
+        return candidate3
+
+    # Último intento: buscar en sys.prefix/Scripts/ o sys.prefix/bin/.
+    for subdir in ("Scripts", "bin"):
+        candidate = os.path.join(sys.prefix, subdir, "python.exe")
+        if os.path.isfile(candidate):
+            return candidate
+
+    # Fallback al sys.executable original — fallará pero al menos no
+    # silenciamos el error.
+    return exe
 
 
 __all__ = [

@@ -7,6 +7,7 @@ importlib para simular ambos escenarios.
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import types
 
@@ -35,8 +36,76 @@ def test_package_vs_import_names():
 
 
 def test_qgis_python_executable_returns_sys_executable():
-    """Debe apuntar al Python actual, no hardcodear paths."""
-    assert ai.qgis_python_executable() == sys.executable
+    """Debe apuntar al Python actual, no hardcodear paths.
+
+    Asume entorno de test = python.exe real (no QGIS-Windows). En
+    QGIS-Windows este test no aplica — ver tests específicos abajo.
+    """
+    result = ai.qgis_python_executable()
+    # En CI/local debería ser python (no qgis-bin).
+    assert "python" in result.lower() or result == sys.executable
+
+
+def test_qgis_python_executable_windows_qgis_uses_sys_prefix(monkeypatch, tmp_path):
+    """En Windows + sys.executable=qgis-bin.exe debe derivar python.exe
+    desde sys.prefix (donde QGIS embebe el Python).
+
+    Reproduce el bug que reportó usuario en 0.7.6: subprocess relanzaba
+    QGIS porque sys.executable apuntaba a qgis-ltr-bin.exe."""
+    fake_qgis_root = tmp_path / "Program Files" / "QGIS 3.34" / "bin"
+    fake_qgis_root.mkdir(parents=True)
+    fake_qgis_bin = fake_qgis_root / "qgis-ltr-bin.exe"
+    fake_qgis_bin.write_bytes(b"")
+
+    fake_python_root = tmp_path / "Program Files" / "QGIS 3.34" / "apps" / "Python312"
+    fake_python_root.mkdir(parents=True)
+    fake_python_exe = fake_python_root / "python.exe"
+    fake_python_exe.write_bytes(b"")
+
+    monkeypatch.setattr(ai.sys, "platform", "win32")
+    monkeypatch.setattr(ai.sys, "executable", str(fake_qgis_bin))
+    monkeypatch.setattr(ai.sys, "prefix", str(fake_python_root))
+
+    result = ai.qgis_python_executable()
+    assert result == str(fake_python_exe)
+    assert "qgis" not in os.path.basename(result).lower()
+
+
+def test_qgis_python_executable_windows_real_python_passthrough(monkeypatch, tmp_path):
+    """Si sys.executable YA es python.exe (Windows nativo, no QGIS),
+    devolverlo tal cual sin tocar sys.prefix."""
+    fake_python = tmp_path / "Python312" / "python.exe"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_bytes(b"")
+
+    monkeypatch.setattr(ai.sys, "platform", "win32")
+    monkeypatch.setattr(ai.sys, "executable", str(fake_python))
+
+    assert ai.qgis_python_executable() == str(fake_python)
+
+
+def test_qgis_python_executable_windows_python3_exe_fallback(monkeypatch, tmp_path):
+    """Algunas distribuciones embeben python3.exe en vez de python.exe."""
+    fake_qgis_bin = tmp_path / "qgis-bin.exe"
+    fake_qgis_bin.write_bytes(b"")
+    fake_python_root = tmp_path / "apps" / "Python311"
+    fake_python_root.mkdir(parents=True)
+    fake_python3 = fake_python_root / "python3.exe"
+    fake_python3.write_bytes(b"")
+
+    monkeypatch.setattr(ai.sys, "platform", "win32")
+    monkeypatch.setattr(ai.sys, "executable", str(fake_qgis_bin))
+    monkeypatch.setattr(ai.sys, "prefix", str(fake_python_root))
+
+    assert ai.qgis_python_executable() == str(fake_python3)
+
+
+def test_qgis_python_executable_linux_returns_sys_executable_directly(monkeypatch):
+    """En Linux/macOS sys.executable siempre es python correcto — no
+    debe entrar a la lógica Windows-only de sys.prefix."""
+    monkeypatch.setattr(ai.sys, "platform", "linux")
+    monkeypatch.setattr(ai.sys, "executable", "/usr/bin/python3")
+    assert ai.qgis_python_executable() == "/usr/bin/python3"
 
 
 def test_is_geoai_available_false_when_missing(monkeypatch):
