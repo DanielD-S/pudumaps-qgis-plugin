@@ -209,14 +209,13 @@ def _run_geoai_buildings(
     # to_file con driver GeoJSON reproyecta automáticamente si el gdf está
     # en otro CRS, así que las coordenadas escritas son siempre lat/lon.
     if gdf.crs is None:
-        # Sin CRS: asumir el del raster como último recurso.
-        try:
-            import rasterio
-            with rasterio.open(raster_path) as ds:
-                if ds.crs is not None:
-                    gdf = gdf.set_crs(ds.crs)
-        except Exception:  # noqa: BLE001
-            pass
+        # Sin CRS: asumir el del raster como último recurso (con fallback GDAL).
+        raster_crs = _read_raster_crs(raster_path)
+        if raster_crs is not None:
+            try:
+                gdf = gdf.set_crs(raster_crs)
+            except Exception:  # noqa: BLE001
+                pass
 
     # Reproyectar a 4326 antes de escribir GeoJSON (lo standard).
     if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
@@ -245,6 +244,47 @@ def _run_geoai_buildings(
     return n
 
 
+def _read_raster_crs(raster_path: str):
+    """Lee el CRS del raster con cadena de fallbacks.
+
+    Caso reproducido en QGIS-Windows: rasterio.open(naip).crs devuelve
+    None porque PROJ data no está bien configurado dentro del Python
+    embebido de QGIS, pero GDAL nativo sí lee el CRS sin problema.
+
+    Returns:
+        String tipo "EPSG:26911" o WKT, o None si todo falla.
+    """
+    # Estrategia 1: rasterio (preferida cuando funciona).
+    try:
+        import rasterio
+        with rasterio.open(raster_path) as ds:
+            if ds.crs is not None:
+                return ds.crs.to_string()
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Estrategia 2: GDAL nativo (siempre disponible en QGIS).
+    try:
+        from osgeo import gdal, osr
+
+        gdal_ds = gdal.Open(raster_path)
+        if gdal_ds is not None:
+            wkt = gdal_ds.GetProjection()
+            gdal_ds = None  # liberar handle
+            if wkt:
+                srs = osr.SpatialReference()
+                srs.ImportFromWkt(wkt)
+                epsg = srs.GetAuthorityCode(None)
+                if epsg:
+                    return f"EPSG:{epsg}"
+                # WKT como string es válido para pyproj/geopandas también.
+                return wkt
+    except Exception:  # noqa: BLE001
+        pass
+
+    return None
+
+
 def _fix_crs_against_raster(gdf, raster_path: str, progress_cb):
     """Detecta y corrige CRS mal etiquetado del gdf contra el raster fuente.
 
@@ -258,17 +298,13 @@ def _fix_crs_against_raster(gdf, raster_path: str, progress_cb):
     3. Si gdf coords están en rangos de UTM (>180 en X o >90 en Y) pero
        gdf.crs es 4326 → corregimos: re-etiquetar al CRS del raster.
     """
-    try:
-        import rasterio
-    except ImportError:
-        return gdf
-
-    try:
-        with rasterio.open(raster_path) as ds:
-            raster_crs = ds.crs
-            if raster_crs is None:
-                return gdf
-    except Exception:  # noqa: BLE001
+    raster_crs = _read_raster_crs(raster_path)
+    if raster_crs is None:
+        _emit(
+            progress_cb,
+            "Aviso: no pude leer el CRS del raster (ni rasterio ni GDAL). "
+            "Los polígonos pueden quedar mal georeferenciados.",
+        )
         return gdf
 
     # Chequeo de coords: si están fuera de rango lat/lon válido, no son 4326.
@@ -290,9 +326,10 @@ def _fix_crs_against_raster(gdf, raster_path: str, progress_cb):
             _emit(
                 progress_cb,
                 f"Detectado CRS mal etiquetado: coords no son lat/lon, "
-                f"re-etiquetando como {raster_crs.to_string()}…",
+                f"re-etiquetando como {raster_crs}…",
             )
             # set_crs sin allow_override falla si ya hay CRS; usamos allow_override.
+            # raster_crs es string ("EPSG:26911") o WKT — geopandas acepta ambos.
             gdf = gdf.set_crs(raster_crs, allow_override=True)
 
     return gdf
