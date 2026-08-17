@@ -180,20 +180,23 @@ def test_external_layer_to_qgis_wms_builds_ogc_wms_uri(monkeypatch):
     assert layer.uri == "crs=EPSG:4326&format=image/png&layers=ns:capa&styles=&url=host/geoserver/wms"
 
 
-def test_external_layer_to_qgis_arcgis_map_uses_rest_url_directly(monkeypatch):
+def test_external_layer_to_qgis_arcgis_map_wraps_url_key(monkeypatch):
+    # La URL pelada "funciona" (isValid()==True) pero no conecta a nada —
+    # confirmado en prod 2026-08-17 con un FeatureServer real que
+    # respondía features por curl y quedaba vacío en QGIS sin el url=.
     monkeypatch.setattr(project_loader, "QgsRasterLayer", _FakeQgisLayer)
     url = "https://example.com/arcgis/rest/services/Foo/MapServer"
     layer = external_layer_to_qgis("arcgis_map", url, "Foo")
     assert layer.provider == "arcgismapserver"
-    assert layer.uri == url
+    assert layer.uri == f"url={url}"
 
 
-def test_external_layer_to_qgis_arcgis_feature_uses_vector_provider(monkeypatch):
+def test_external_layer_to_qgis_arcgis_feature_wraps_url_key(monkeypatch):
     monkeypatch.setattr(project_loader, "QgsVectorLayer", _FakeQgisLayer)
     url = "https://example.com/arcgis/rest/services/Foo/FeatureServer/0"
     layer = external_layer_to_qgis("arcgis_feature", url, "Foo")
     assert layer.provider == "arcgisfeatureserver"
-    assert layer.uri == url
+    assert layer.uri == f"url={url}"
 
 
 def test_external_layer_to_qgis_weather_is_unsupported_not_invalid():

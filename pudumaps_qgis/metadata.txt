@@ -43,6 +43,10 @@ changelog=0.8.1 (2026-08-17) — Fix: capas externas del catálogo Capas Oficial
     (puntos Open-Meteo calculados en el navegador, sin servicio geoespacial
     real) se reporta como no soportado en vez de quedar en blanco sin
     explicación.
+  * URI de arcgismapserver/arcgisfeatureserver envuelta como
+    url=<endpoint> — la URL pelada dejaba isValid()==True pero 0
+    features/tiles sin error visible. Confirmado en prod contra un
+    FeatureServer real de SERNAGEOMIN que respondía features por curl.
   * _zoom_to_group ya no crashea silenciosamente ante la primera capa
     raster del grupo (featureCount() no existe en QgsRasterLayer).
   * sync_dialog y el menú contextual "Subir a Pudumaps" excluyen estas

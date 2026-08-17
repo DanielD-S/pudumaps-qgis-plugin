@@ -131,13 +131,16 @@ def external_layer_to_qgis(layer_type: str, external_url: str, name: str) -> Qgs
         return QgsRasterLayer(uri, name, "wms")
 
     if layer_type == "arcgis_map":
-        # Proveedor nativo QGIS para ArcGIS REST MapServer — soporta la URL
-        # del servicio (o de una sub-capa .../MapServer/<id>) directamente.
-        return QgsRasterLayer(external_url, name, "arcgismapserver")
+        # Proveedores ESRI de QGIS parsean un connection-string key=value
+        # (igual que wms) — la URL pelada sin el prefijo `url=` "funciona"
+        # (isValid()==True, el provider se instancia) pero no encuentra el
+        # servicio real: 0 features/tiles sin error visible. Confirmado en
+        # producción (2026-08-17): la URL sola dejaba la capa vacía aunque
+        # el servicio respondía bien por curl.
+        return QgsRasterLayer(f"url={external_url}", name, "arcgismapserver")
 
     if layer_type == "arcgis_feature":
-        # Proveedor nativo QGIS para ArcGIS REST FeatureServer (vectorial).
-        return QgsVectorLayer(external_url, name, "arcgisfeatureserver")
+        return QgsVectorLayer(f"url={external_url}", name, "arcgisfeatureserver")
 
     raise UnsupportedLayerError(f"Tipo de capa desconocido: {layer_type!r}")
 

@@ -20,6 +20,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `QgsVectorLayer` (arcgisfeatureserver) para capas externas en vez de
   intentar vectorizar un GeoJSON vacío. `weather` (calculado en el
   navegador, sin servicio geoespacial real) se reporta como no soportado.
+  Las URI de arcgismapserver/arcgisfeatureserver van envueltas como
+  `url=<endpoint>` — la URL pelada deja `isValid()==True` pero 0
+  features/tiles sin error visible (confirmado en prod contra un
+  FeatureServer real de SERNAGEOMIN que respondía features por curl).
 - `_zoom_to_group` ya no aborta silenciosamente al toparse con una capa
   raster (`featureCount()` no existe fuera de capas vectoriales).
 - Sync y "Subir a Pudumaps" excluyen capas externas — son referencias en
