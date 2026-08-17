@@ -1,13 +1,22 @@
-"""Load a Pudumaps project's layers into QGIS as QgsVectorLayers.
+"""Load a Pudumaps project's layers into QGIS.
 
-Takes a `PudumapsClient` and a `project_id`. Fetches each layer's full
-geojson and converts it to a memory-based QgsVectorLayer. Applies basic
-default styling and tags the layer with its remote id as a custom
-property so Fase 3+4 can detect which layers came from Pudumaps.
+Takes a `PudumapsClient` and a `project_id`. Layers with `layer_type ==
+"geojson"` (uploaded/synced from QGIS) get their full geojson converted
+to a memory-based QgsVectorLayer with basic default styling. Layers
+added from the web app's "Capas Oficiales" catalog (`layer_type` in
+wms/arcgis_map/arcgis_feature/weather) have no stored geometry — they're
+live references to an external service, loaded as QgsRasterLayer/
+QgsVectorLayer against that service instead (see `external_layer_to_qgis`).
+Every loaded layer is tagged with its remote id as a custom property so
+Fase 3+4 can detect which layers came from Pudumaps.
 
 Audit 2026-05-07 (H3 MEDIO + H4 MEDIO): tempfile usado por OGR ahora
 se borra en finally, y el GeoJSON se valida estructuralmente antes de
 escribir (rechazamos shapes que no son FeatureCollection/Feature).
+
+2026-08-17: layer_type/external_url expuestos en la API — antes toda
+capa sin geojson local (wms/arcgis_map/arcgis_feature/weather) se leía
+como FeatureCollection vacío y quedaba invisible sin zoom.
 """
 
 from __future__ import annotations
@@ -21,8 +30,10 @@ from typing import Any
 from qgis.core import (
     QgsFillSymbol,
     QgsLineSymbol,
+    QgsMapLayer,
     QgsMarkerSymbol,
     QgsProject,
+    QgsRasterLayer,
     QgsSingleSymbolRenderer,
     QgsVectorLayer,
     QgsWkbTypes,
@@ -37,6 +48,12 @@ PROP_LAYER_ID = "pudumaps/layer_id"
 PROP_PROJECT_ID = "pudumaps/project_id"
 PROP_PROJECT_NAME = "pudumaps/project_name"
 PROP_LAST_HASH = "pudumaps/last_hash"
+# Solo se estampa en capas externas (ver EXTERNAL_LAYER_TYPES). Su ausencia
+# significa "geojson" — los callers deben leerla con ese default para no
+# romper capas ya cargadas antes de este flag (sync_dialog._collect_local_layers
+# la usa para excluir capas externas de push/sync: son referencias en vivo,
+# no datos locales editables).
+PROP_LAYER_TYPE = "pudumaps/layer_type"
 
 
 @dataclass
@@ -48,6 +65,81 @@ class LoadResult:
 
 class InvalidGeoJsonError(ValueError):
     """Raised when a payload doesn't look like a valid GeoJSON FeatureCollection/Feature."""
+
+
+class InvalidExternalLayerError(ValueError):
+    """Raised when an external-layer row is missing/malformed external_url."""
+
+
+class UnsupportedLayerError(ValueError):
+    """Layer type has no QGIS-loadable representation (e.g. 'weather')."""
+
+
+# Capas que Pudumaps guarda como referencia a un servicio en vivo en vez de
+# geojson local (ver WMSLayerPanel.persistExternalLayer en la app principal:
+# geojson=null, layer_type + external_url describen la fuente real).
+EXTERNAL_LAYER_TYPES = frozenset({"wms", "arcgis_map", "arcgis_feature", "weather"})
+
+
+def parse_wms_external_url(external_url: str) -> tuple[str, str]:
+    """Parsea el sentinel `wms://<baseUrl>?layers=<encoded>` que escribe la
+    app principal (WMSLayerPanel.tsx, rehidratación ~línea 526) en
+    (base_url, layers). Debe espejar esa lógica 1:1.
+    """
+    from urllib.parse import unquote
+
+    without_prefix = (
+        external_url[len("wms://"):] if external_url.startswith("wms://") else external_url
+    )
+    sep_idx = without_prefix.find("?layers=")
+    if sep_idx == -1:
+        raise InvalidExternalLayerError(
+            f"external_url de WMS sin '?layers=': {external_url!r}"
+        )
+    base_url = without_prefix[:sep_idx]
+    layers = unquote(without_prefix[sep_idx + len("?layers=") :])
+    if not base_url or not layers:
+        raise InvalidExternalLayerError(
+            f"external_url de WMS con base_url o layers vacíos: {external_url!r}"
+        )
+    return base_url, layers
+
+
+def external_layer_to_qgis(layer_type: str, external_url: str, name: str) -> QgsMapLayer:
+    """Construye la capa QGIS correspondiente a una capa externa (WMS,
+    ArcGIS Map/FeatureServer). `weather` no tiene representación GIS real
+    (son puntos calculados en el navegador vía Open-Meteo para un set fijo
+    de ciudades — no hay servicio geoespacial detrás) y siempre levanta
+    UnsupportedLayerError; el caller debe reportarlo como capa no soportada,
+    no como error.
+    """
+    if layer_type == "weather":
+        raise UnsupportedLayerError(
+            "Capa de clima en vivo — no soportada en el plugin QGIS (depende "
+            "de Open-Meteo calculado en el navegador). Disponible solo en la "
+            "web de Pudumaps."
+        )
+    if not external_url:
+        raise InvalidExternalLayerError(f"Capa externa sin external_url: {name!r}")
+
+    if layer_type == "wms":
+        # Formato probado del connection-string wms de QGIS (PyQGIS cookbook):
+        # valores planos, sin re-encodear — `layers`/`url` ya vienen
+        # decodificados por parse_wms_external_url.
+        base_url, layers = parse_wms_external_url(external_url)
+        uri = f"crs=EPSG:4326&format=image/png&layers={layers}&styles=&url={base_url}"
+        return QgsRasterLayer(uri, name, "wms")
+
+    if layer_type == "arcgis_map":
+        # Proveedor nativo QGIS para ArcGIS REST MapServer — soporta la URL
+        # del servicio (o de una sub-capa .../MapServer/<id>) directamente.
+        return QgsRasterLayer(external_url, name, "arcgismapserver")
+
+    if layer_type == "arcgis_feature":
+        # Proveedor nativo QGIS para ArcGIS REST FeatureServer (vectorial).
+        return QgsVectorLayer(external_url, name, "arcgisfeatureserver")
+
+    raise UnsupportedLayerError(f"Tipo de capa desconocido: {layer_type!r}")
 
 
 def validate_geojson_shape(geojson: Any) -> None:
@@ -261,11 +353,10 @@ def load_project(
     group = existing_group or root.insertGroup(0, group_name)
 
     # Build a lookup of already-present layers by remote id so we can
-    # dedupe (Fase 4 safeguard)
-    existing_by_remote_id: dict[str, QgsVectorLayer] = {}
+    # dedupe (Fase 4 safeguard). Cualquier tipo de capa cuenta — las capas
+    # externas (wms/arcgis_map) son QgsRasterLayer, no QgsVectorLayer.
+    existing_by_remote_id: dict[str, QgsMapLayer] = {}
     for layer in project.mapLayers().values():
-        if not isinstance(layer, QgsVectorLayer):
-            continue
         rid = layer.customProperty(PROP_LAYER_ID, "")
         if rid:
             existing_by_remote_id[rid] = layer
@@ -278,6 +369,42 @@ def load_project(
             progress_cb(idx, total, summary.name)
         try:
             full = client.get_layer(summary.id)
+            layer_type = full.get("layer_type") or "geojson"
+
+            if layer_type in EXTERNAL_LAYER_TYPES:
+                # Capa externa (wms/arcgis_map/arcgis_feature/weather):
+                # geojson viene null a propósito — no hay features locales,
+                # es una referencia a un servicio en vivo (o, para 'weather',
+                # algo que el plugin no puede representar).
+                if summary.id in existing_by_remote_id:
+                    # Ya está cargada. No hay features locales que refrescar
+                    # (el servicio se re-consulta en vivo cada vez que QGIS
+                    # dibuja el canvas), así que no recreamos la capa.
+                    loaded += 1
+                    continue
+
+                ext_layer = external_layer_to_qgis(
+                    layer_type, full.get("external_url") or "", name=summary.name
+                )
+                if not ext_layer.isValid():
+                    failed.append(
+                        (
+                            summary.name,
+                            f"external_layer_invalid: no se pudo cargar "
+                            f"{layer_type} desde {full.get('external_url')!r}",
+                        )
+                    )
+                    continue
+
+                ext_layer.setCustomProperty(PROP_LAYER_ID, summary.id)
+                ext_layer.setCustomProperty(PROP_PROJECT_ID, project_id)
+                ext_layer.setCustomProperty(PROP_PROJECT_NAME, project_name)
+                ext_layer.setCustomProperty(PROP_LAYER_TYPE, layer_type)
+                project.addMapLayer(ext_layer, addToLegend=False)
+                group.addLayer(ext_layer)
+                loaded += 1
+                continue
+
             geojson = full.get("geojson") or {"type": "FeatureCollection", "features": []}
 
             # Compute the canonical hash once and reuse
@@ -310,6 +437,10 @@ def load_project(
             failed.append(
                 (summary.name, f"{e.code or 'api_error'}: {safe_error_message(e)}")
             )
+        except UnsupportedLayerError as e:
+            # Conocido y esperado (ej. 'weather') — no es un bug, no se
+            # loguea como tal.
+            failed.append((summary.name, str(e)))
         except Exception as e:  # noqa: BLE001
             log_full_error("project_loader.load_project", e)
             failed.append((summary.name, f"unexpected: {safe_error_message(e)}"))
@@ -334,7 +465,12 @@ def _zoom_to_group(group) -> None:
             layer = child.layer()
             if layer is None or not layer.isValid():
                 continue
-            if layer.featureCount() == 0:
+            # featureCount() solo existe en capas vectoriales — las capas
+            # externas (wms/arcgis_map) son QgsRasterLayer y no lo tienen.
+            # Sin este guard, la primera capa raster del grupo tira una
+            # excepción que aborta el cálculo de extent para TODO el grupo
+            # (el try/except de más abajo la traga silenciosamente).
+            if isinstance(layer, QgsVectorLayer) and layer.featureCount() == 0:
                 continue
             extent = layer.extent()
             if extent.isNull() or extent.isEmpty():

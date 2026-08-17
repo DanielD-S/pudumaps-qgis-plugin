@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.1] — 2026-08-17
+
+### Fixed
+- **Capas del catálogo "Capas Oficiales de Chile" (WMS/ArcGIS) quedaban
+  invisibles al hacer pull.** Estas capas se guardan en `project_layers`
+  con `geojson=null` (el detalle real vive en `layer_type`/`external_url`,
+  la web las resuelve en vivo), pero la API v1 nunca exponía esos campos —
+  el plugin recibía `geojson=null` para todas y las trataba como
+  `FeatureCollection` vacía, así que el canvas quedaba en blanco y sin
+  zoom para el proyecto entero, no solo la capa WMS.
+- Requiere la migración `20260817190000_api_v1_expose_external_layers` en
+  el backend (expone `layer_type`/`external_url`/`metadata` en
+  `api_v1_list_layers`/`api_v1_get_layer`).
+- `project_loader` ahora crea `QgsRasterLayer` (wms/arcgismapserver) o
+  `QgsVectorLayer` (arcgisfeatureserver) para capas externas en vez de
+  intentar vectorizar un GeoJSON vacío. `weather` (calculado en el
+  navegador, sin servicio geoespacial real) se reporta como no soportado.
+- `_zoom_to_group` ya no aborta silenciosamente al toparse con una capa
+  raster (`featureCount()` no existe fuera de capas vectoriales).
+- Sync y "Subir a Pudumaps" excluyen capas externas — son referencias en
+  vivo, no datos locales.
+
 ## [0.8.0] — 2026-08-17
 
 Desarrollo del módulo IA cancelado por ahora. Release de hardening enfocada

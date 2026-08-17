@@ -25,8 +25,10 @@ def _stub_qgis_core() -> None:
     for name in (
         "QgsFillSymbol",
         "QgsLineSymbol",
+        "QgsMapLayer",
         "QgsMarkerSymbol",
         "QgsProject",
+        "QgsRasterLayer",
         "QgsSingleSymbolRenderer",
         "QgsVectorLayer",
         "QgsWkbTypes",
@@ -41,11 +43,33 @@ def _stub_qgis_core() -> None:
 
 _stub_qgis_core()
 
+import pytest  # noqa: E402
+
+import pudumaps_qgis.project_loader as project_loader  # noqa: E402
 from pudumaps_qgis.project_loader import (  # noqa: E402
+    EXTERNAL_LAYER_TYPES,
+    InvalidExternalLayerError,
+    UnsupportedLayerError,
     _field_type_for,
     _safe_field_name,
+    external_layer_to_qgis,
     infer_geometry_type,
+    parse_wms_external_url,
 )
+
+
+class _FakeQgisLayer:
+    """Sustituye QgsRasterLayer/QgsVectorLayer para inspeccionar con qué
+    URI/proveedor external_layer_to_qgis los construyó, sin depender de un
+    runtime QGIS real."""
+
+    def __init__(self, uri, name, provider):
+        self.uri = uri
+        self.name = name
+        self.provider = provider
+
+    def isValid(self):
+        return True
 
 
 def test_infer_point_from_feature_collection():
@@ -108,3 +132,84 @@ def test_field_type_mapping_covers_common_types():
     assert _field_type_for(6) == "double"
     assert _field_type_for(10) == "string"
     assert _field_type_for(999) == "string"  # unknown → string fallback
+
+
+# ── Capas externas (wms/arcgis_map/arcgis_feature/weather) ─────────────────
+
+
+def test_external_layer_types_matches_db_check_constraint():
+    # Espeja el CHECK constraint de project_layers — si alguien agrega un
+    # layer_type nuevo en la DB (20260424130000_project_layers_external.sql)
+    # sin actualizar acá, este test lo marca.
+    assert EXTERNAL_LAYER_TYPES == {"wms", "arcgis_map", "arcgis_feature", "weather"}
+
+
+def test_parse_wms_external_url_splits_base_and_decodes_layers():
+    base, layers = parse_wms_external_url(
+        "wms://ide.minagri.gob.cl/geoserver/wms?layers=namespace%3Auso_suelo"
+    )
+    assert base == "ide.minagri.gob.cl/geoserver/wms"
+    assert layers == "namespace:uso_suelo"
+
+
+def test_parse_wms_external_url_tolerates_missing_scheme():
+    # La rehidratación JS también aplica el replace de forma tolerante
+    # (WMSLayerPanel.tsx) — un external_url sin el prefijo wms:// no debería
+    # reventar, solo tratarse como si ya viniera sin prefijo.
+    base, layers = parse_wms_external_url("host/wms?layers=foo")
+    assert base == "host/wms"
+    assert layers == "foo"
+
+
+def test_parse_wms_external_url_rejects_missing_layers_param():
+    with pytest.raises(InvalidExternalLayerError):
+        parse_wms_external_url("wms://host/wms")
+
+
+def test_parse_wms_external_url_rejects_empty_layers_value():
+    with pytest.raises(InvalidExternalLayerError):
+        parse_wms_external_url("wms://host/wms?layers=")
+
+
+def test_external_layer_to_qgis_wms_builds_ogc_wms_uri(monkeypatch):
+    monkeypatch.setattr(project_loader, "QgsRasterLayer", _FakeQgisLayer)
+    layer = external_layer_to_qgis(
+        "wms", "wms://host/geoserver/wms?layers=ns%3Acapa", "Mi capa"
+    )
+    assert layer.provider == "wms"
+    assert layer.uri == "crs=EPSG:4326&format=image/png&layers=ns:capa&styles=&url=host/geoserver/wms"
+
+
+def test_external_layer_to_qgis_arcgis_map_uses_rest_url_directly(monkeypatch):
+    monkeypatch.setattr(project_loader, "QgsRasterLayer", _FakeQgisLayer)
+    url = "https://example.com/arcgis/rest/services/Foo/MapServer"
+    layer = external_layer_to_qgis("arcgis_map", url, "Foo")
+    assert layer.provider == "arcgismapserver"
+    assert layer.uri == url
+
+
+def test_external_layer_to_qgis_arcgis_feature_uses_vector_provider(monkeypatch):
+    monkeypatch.setattr(project_loader, "QgsVectorLayer", _FakeQgisLayer)
+    url = "https://example.com/arcgis/rest/services/Foo/FeatureServer/0"
+    layer = external_layer_to_qgis("arcgis_feature", url, "Foo")
+    assert layer.provider == "arcgisfeatureserver"
+    assert layer.uri == url
+
+
+def test_external_layer_to_qgis_weather_is_unsupported_not_invalid():
+    # 'weather' no tiene URL real (weather://<variable> es un sentinel del
+    # frontend, sin servicio geoespacial detrás) — debe ser
+    # UnsupportedLayerError, no InvalidExternalLayerError, para que el
+    # caller lo reporte como "no soportado" y no como bug/dato corrupto.
+    with pytest.raises(UnsupportedLayerError):
+        external_layer_to_qgis("weather", "weather://temperature", "Clima")
+
+
+def test_external_layer_to_qgis_missing_url_is_invalid():
+    with pytest.raises(InvalidExternalLayerError):
+        external_layer_to_qgis("wms", "", "Sin URL")
+
+
+def test_external_layer_to_qgis_unknown_type_is_unsupported():
+    with pytest.raises(UnsupportedLayerError):
+        external_layer_to_qgis("something_new", "https://example.com", "Rara")

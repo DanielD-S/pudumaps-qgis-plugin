@@ -26,6 +26,7 @@ from ..error_utils import log_full_error, safe_error_message
 from ..exporter import ExportError, layer_to_geojson
 from ..project_loader import (
     PROP_LAYER_ID,
+    PROP_LAYER_TYPE,
     PROP_PROJECT_ID,
     PROP_PROJECT_NAME,
     apply_default_style,
@@ -154,10 +155,18 @@ class SyncDialog(QDialog):
 
     def _collect_local_layers(self) -> list[QgsVectorLayer]:
         """All vector layers linked to this Pudumaps project (matching
-        pudumaps/project_id custom property)."""
+        pudumaps/project_id custom property).
+
+        Capas externas (wms/arcgis_map/arcgis_feature) quedan afuera aunque
+        arcgis_feature sea un QgsVectorLayer: son referencias en vivo a un
+        servicio externo, no datos locales — no tiene sentido "sincronizar"
+        ni ofrecer su push como si fueran una capa subida/editada en QGIS.
+        """
         result: list[QgsVectorLayer] = []
         for layer in QgsProject.instance().mapLayers().values():
             if not isinstance(layer, QgsVectorLayer):
+                continue
+            if layer.customProperty(PROP_LAYER_TYPE, "geojson") != "geojson":
                 continue
             pid = layer.customProperty(PROP_PROJECT_ID, "")
             if pid == self.project_id:
