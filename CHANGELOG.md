@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] — 2026-08-17
+
+Desarrollo del módulo IA cancelado por ahora. Release de hardening enfocada
+en dejar el plugin listo para publicación futura.
+
+### Removed
+- Módulo IA (`extract_buildings`, `extract_water`, `landcover_classification`,
+  `change_detection`, `download_sentinel`) sacado de la UI: sin entrada de
+  menú/toolbar, sin panel lateral, sin instalador. Motivo: dependía de un
+  instalador pip pesado (~2 GB, PyTorch + geoai-py + GeoAgent) contra el
+  Python embebido de QGIS, con una cadena larga de hotfixes de DLL/CRS
+  (v0.7.7–v0.7.15) y sin smoke test manual completo de las 5 acciones sobre
+  datos chilenos. No es un feature listo para usuarios finales.
+- El código (`pudumaps_qgis/ai/`, diálogos `ai_panel.py`,
+  `install_ai_dialog.py`, `change_detection_dialog.py`,
+  `download_sentinel_dialog.py`) se mantiene en el repo por si se retoma,
+  pero `scripts/build.py` y `build.sh` ahora lo excluyen del zip publicado.
+
+### Changed
+- El plugin publicado deja de arrastrar la superficie de fallo de
+  PyTorch/geoai (conflictos MKL, DLL load failed, pyarrow rompiendo QGIS,
+  CRS mal etiquetado). Única dependencia externa: `requests`, ya bundleada
+  en QGIS 3.x en todas las plataformas.
+- Foco del plugin vuelve a ser exclusivamente sync con Pudumaps: configurar
+  API key, abrir proyectos, subir capas y sincronizar cambios bidireccional.
+
 ## [0.7.10] — 2026-05-18
 
 Smoke test release. Resuelve los 4 bugs reportados durante validación

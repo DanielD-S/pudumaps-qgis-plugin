@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.7.15
+version=0.8.0
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -21,9 +21,25 @@ deprecated=False
 server=False
 hasProcessingProvider=no
 
-tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration,ai,deep-learning,segmentation
+tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.7.13 (2026-05-19) — Fix extract_buildings flow + mejor mensaje vacío
+changelog=0.8.0 (2026-08-17) — Módulo IA oculto de la UI + hardening para publicación
+  * El módulo IA (detección de edificios/agua, landcover, change detection,
+    descarga Sentinel-2 vía geoai-py/GeoAgent) queda FUERA de esta release.
+    No es un feature maduro: dependía de un instalador pip pesado (~2 GB,
+    PyTorch) contra el Python embebido de QGIS, con varios hotfixes de DLL
+    /CRS sin smoke test completo. Se retira de la UI (menú, toolbar, panel)
+    y del zip publicado — el código sigue en el repo (paquete ai/ y
+    diálogos asociados) por si se retoma más adelante, pero no se instala
+    ni se ofrece al usuario.
+  * scripts/build.py y build.sh excluyen pudumaps_qgis/ai/ y los diálogos
+    IA del zip. El plugin publicado ya no arrastra la superficie de fallo
+    de PyTorch/geoai — solo depende de `requests`, ya bundleada en QGIS.
+  * Sin cambios en sync/pull/push/settings — siguen siendo el foco del
+    plugin: navegar proyectos, abrir capas, subir capas nuevas y
+    sincronizar cambios en ambas direcciones contra la API pública.
+
+ 0.7.13 (2026-05-19) — Fix extract_buildings flow + mejor mensaje vacío
   * BUG REPORTADO en 0.7.12: extract_buildings corría 1 min y fallaba
     silenciosamente con "geoai no produjo el archivo de máscaras".
     Causa: mi código asumía que process_raster() escribe un GeoTIFF
