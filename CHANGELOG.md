@@ -3,6 +3,138 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] — 2026-08-17
+
+Desarrollo del módulo IA cancelado por ahora. Release de hardening enfocada
+en dejar el plugin listo para publicación futura.
+
+### Removed
+- Módulo IA (`extract_buildings`, `extract_water`, `landcover_classification`,
+  `change_detection`, `download_sentinel`) sacado de la UI: sin entrada de
+  menú/toolbar, sin panel lateral, sin instalador. Motivo: dependía de un
+  instalador pip pesado (~2 GB, PyTorch + geoai-py + GeoAgent) contra el
+  Python embebido de QGIS, con una cadena larga de hotfixes de DLL/CRS
+  (v0.7.7–v0.7.15) y sin smoke test manual completo de las 5 acciones sobre
+  datos chilenos. No es un feature listo para usuarios finales.
+- El código (`pudumaps_qgis/ai/`, diálogos `ai_panel.py`,
+  `install_ai_dialog.py`, `change_detection_dialog.py`,
+  `download_sentinel_dialog.py`) se mantiene en el repo por si se retoma,
+  pero `scripts/build.py` y `build.sh` ahora lo excluyen del zip publicado.
+
+### Changed
+- El plugin publicado deja de arrastrar la superficie de fallo de
+  PyTorch/geoai (conflictos MKL, DLL load failed, pyarrow rompiendo QGIS,
+  CRS mal etiquetado). Única dependencia externa: `requests`, ya bundleada
+  en QGIS 3.x en todas las plataformas.
+- Foco del plugin vuelve a ser exclusivamente sync con Pudumaps: configurar
+  API key, abrir proyectos, subir capas y sincronizar cambios bidireccional.
+
+## [0.7.10] — 2026-05-18
+
+Smoke test release. Resuelve los 4 bugs reportados durante validación
+manual de 0.7.6/0.7.7/0.7.8 + alinea wrappers con API real de geoai 0.10.
+
+### Fixed
+- **DLL load failed en QgsTask** (Windows): warm-up de `import geoai`
+  en main thread vía `warm_up_geoai()`. La primera vez por sesión
+  bloquea 30-90s con dialog "Cargando módulo IA". Tasks subsiguientes
+  vuelan sin re-inicializar DLLs. Causa: PyTorch en Windows no soporta
+  inicialización desde threads worker.
+- **PyTorch CUDA por default** (Windows sin GPU): el instalador ahora
+  fuerza CPU-only desde `https://download.pytorch.org/whl/cpu` antes
+  de instalar geoai. Evita el "DLL load failed" cuando pip baja la
+  variante CUDA que requiere drivers NVIDIA.
+- **Detección de python.exe QGIS** (más robusta que 0.7.8): combina
+  `os.__file__` + cadena de fallbacks sobre `sys.prefix`/`exec_prefix`/
+  `base_prefix` + layout OSGeo4W. Cubre el caso QGIS-Windows donde
+  `sys.prefix` apunta al QGIS root en vez del Python embebido.
+
+### Changed — Rewrite de las 5 acciones IA con APIs reales de geoai 0.10.0
+- **`extract_buildings`**: `BuildingFootprintExtractor.process_raster()`
+  (no `.predict()`). Produce GeoTIFF intermedio + vectoriza a GeoJSON.
+- **`change_detection`**: `ChangeDetection` (clase, no `ChangeDetector`)
+  con método `detect_changes(image1_path, image2_path, output_path)`.
+  Descarga SAM ViT-H checkpoint (~2.4 GB) la primera vez.
+- **`extract_water`**: `CLIPSegmentation.segment_image()` con text prompt
+  "water bodies, lakes, rivers, reservoirs". Threshold 0.4. Vectoriza
+  máscara con rasterio + shapely.
+- **`landcover_classification`** *(marcado experimental)*: usa
+  `image_segmentation()` de geoai.hf con default
+  `facebook/mask2former-cityscapes` que NO es ideal para landcover
+  satelital. Mejora planeada v0.8 con modelo HF de landcover (Prithvi).
+- **`download_sentinel`**: reescrito desde cero con `pystac_client` +
+  `planetary-computer` (deps de geoai ya instaladas). Query STAC
+  `sentinel-2-l2a` en Microsoft Planetary Computer, ordena por menor
+  cloud cover, descarga R/G/B (B04/B03/B02) recortadas al bbox con
+  rioxarray, apila en GeoTIFF.
+
+### Added — UX polish
+- **Barra de progreso real** durante `pip install`: parser de líneas
+  pip (`PipProgressParser`) extrae paquete N/M + MB descargados +
+  tiempo transcurrido. Cap en 95% hasta ver "Successfully installed".
+- **`CREATE_NO_WINDOW`** en subprocess: pip ya no abre ventana cmd
+  negra durante la instalación. Si por algún edge case aparece, el
+  dialog avisa "no la cierres".
+- Tiempo estimado de instalación en el aviso del dialog ("10-30 min,
+  ~500 MB de PyTorch").
+
+### Notes
+- Pendiente smoke test manual completo de las 5 acciones con datos
+  reales. Si alguna API tampoco coincide con lo verificado en el repo
+  upstream, fix targeted en 0.7.11.
+- Las acciones todavía corren CPU-only — la inferencia puede tomar
+  minutos sobre rásters grandes.
+
+## [0.7.8] — 2026-05-18
+
+### Fixed
+- **Hotfix más robusto** sobre el de 0.7.7. La estrategia "derivar
+  python.exe desde `sys.prefix`" no cubría todas las layouts de
+  QGIS-Windows — algunas distribuciones tienen `sys.prefix` apuntando
+  al root de QGIS, no al directorio del Python embebido. El usuario
+  seguía viendo el mismo error "could not be found".
+- **Nueva estrategia primaria**: derivar desde `os.__file__`, que
+  SIEMPRE apunta a `<python_root>/Lib/os.py`. Esto es independiente
+  de cómo el embebedor de QGIS haya configurado `sys.prefix`.
+- Cadena de fallbacks: `os.__file__` → todos los prefijos
+  (`prefix`/`exec_prefix`/`base_prefix`) × nombres
+  (python.exe/python3.exe/pythonw.exe) → subdirs (Scripts/bin) →
+  layout OSGeo4W (`apps/Python*/python.exe`) → último recurso
+  `sys.executable`.
+
+### Added
+- **Defensa en el instalador**: valida que el python resuelto sea un
+  archivo real antes de invocar `subprocess`. Si la detección falla,
+  error claro (`No se pudo localizar python.exe…`) en vez del
+  críptico "Status 2: File … could not be found".
+- **Diagnóstico al inicio del log de pip**:
+  `[pudumaps-ai diagnostics]` con `sys.executable`, `sys.prefix`,
+  `sys.exec_prefix`, `sys.base_prefix`, `os.__file__`, `resolved_python`.
+  Si hay nuevos reportes de bug, traerán este bloque y podremos
+  diagnosticar de inmediato qué layout no estamos cubriendo.
+- Nueva función `qgis_python_diagnostics()` exportada.
+- 2 tests nuevos cubriendo la estrategia `os.__file__` y el contrato
+  de `qgis_python_diagnostics()`.
+
+## [0.7.7] — 2026-05-18
+
+### Fixed
+- **Hotfix crítico instalador IA en Windows.** En QGIS-Windows
+  `sys.executable` apunta al binario GUI (`qgis-bin.exe` o
+  `qgis-ltr-bin.exe`), NO a `python.exe`. El instalador 0.7.6 hacía
+  `subprocess.run([sys.executable, "-m", "pip", ...])` lo que
+  efectivamente **relanzaba QGIS** con los argumentos de pip — y QGIS
+  interpretaba el spec `geoai-py==0.10.0` como archivo de proyecto,
+  fallando con `Status 2: File … could not be found`.
+- `qgis_python_executable()` ahora deriva `python.exe` desde
+  `sys.prefix` (que siempre apunta al directorio del Python embebido,
+  típicamente `C:\Program Files\QGIS 3.X\apps\PythonXX\`).
+- Fallbacks: `python.exe` → `python3.exe` → `Scripts/python.exe` →
+  `bin/python.exe` → último recurso `sys.executable` original.
+- Linux/macOS sin cambios (`sys.executable` ya es correcto).
+- 4 tests nuevos en `test_ai_detection.py` reproduciendo el caso
+  Windows con `sys.executable=qgis-ltr-bin.exe` + paths fake.
+
 ## [0.7.6] — 2026-05-18
 
 ### Added

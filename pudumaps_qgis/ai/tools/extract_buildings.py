@@ -130,57 +130,209 @@ def _run_geoai_buildings(
     output_path: str,
     progress_cb: Optional[ProgressCallback],
 ) -> int:
-    """Aislamos aquí la llamada a la API de geoai.
+    """Llamada a la API real de geoai 0.10.x.
 
-    La API de geoai-py evoluciona: si cambia entre versiones, basta
-    ajustar este helper sin tocar el resto del módulo. Por eso pineamos
-    `geoai-py==0.10.0` en `pudumaps_qgis/ai/__init__.py`.
+    geoai.BuildingFootprintExtractor.process_raster() es la pipeline
+    completa: tile → infer → vectorize → escribe GeoJSON. Devuelve un
+    GeoDataFrame Y escribe a `output_path` si se provee.
+
+    El método acepta kwargs útiles:
+    - confidence_threshold (default 0.5): min score para retener detección
+    - chip_size (default 512): tamaño del tile de inferencia
+    - min_object_area: filtro de área mínima en pixels
+    - filter_edges (default True): descarta detecciones tocando el borde
+    - regularize (interno): ortogonaliza polígonos detectados
+
+    Si la API cambia entre versiones del paquete, este helper es el
+    único lugar a tocar.
 
     Returns:
-        Número de polígonos detectados.
+        Número de edificaciones detectadas.
     """
     _emit(progress_cb, "Importando geoai…")
     import geoai  # noqa: F401  (chequea que el módulo carga)
 
     _emit(progress_cb, "Inicializando extractor de edificios…")
 
-    # geoai expone varias formas de hacer building extraction según
-    # versión. Intentamos en orden de preferencia, todas dentro del
-    # mismo módulo para que el upgrade sea localizado.
-    extractor = None
     try:
-        # API estable en 0.10.x: clase BuildingFootprintExtractor.
         from geoai import BuildingFootprintExtractor  # type: ignore[attr-defined]
-        extractor = BuildingFootprintExtractor()
-    except (ImportError, AttributeError):
-        pass
+    except (ImportError, AttributeError) as e:
+        raise AIToolError(
+            "Esta versión de geoai no expone BuildingFootprintExtractor. "
+            "Verifica que geoai-py==0.10.0 esté instalado "
+            "(Pudumaps → Instalar módulo IA…)."
+        ) from e
 
-    if extractor is not None and hasattr(extractor, "predict"):
-        _emit(progress_cb, "Ejecutando inferencia…")
-        gdf = extractor.predict(raster_path)  # type: ignore[union-attr]
-    else:
-        # Fallback a la función de alto nivel si la clase no existe.
-        if not hasattr(geoai, "extract_buildings"):
-            raise AIToolError(
-                "Esta versión de geoai no expone BuildingFootprintExtractor "
-                "ni extract_buildings(). Verifica que geoai-py==0.10.0 esté "
-                "instalado (Pudumaps → Instalar módulo IA…)."
-            )
-        _emit(progress_cb, "Ejecutando inferencia…")
-        gdf = geoai.extract_buildings(raster_path)  # type: ignore[attr-defined]
+    extractor = BuildingFootprintExtractor()
 
+    import os as _os
+
+    _emit(progress_cb, "Ejecutando inferencia sobre raster (puede tardar varios minutos)…")
+    # process_raster() hace toda la pipeline: tile, infer, vectorize, escribir.
+    # Devuelve un GeoDataFrame. Si output_path se pasa, también escribe a disco.
+    try:
+        gdf = extractor.process_raster(
+            raster_path=raster_path,
+            output_path=output_path,
+        )
+    except TypeError:
+        # Fallback posicional si el orden de kwargs cambia entre versiones.
+        gdf = extractor.process_raster(raster_path, output_path)
+
+    # Algunas versiones devuelven None aunque escriban a disco — chequeamos
+    # ambos casos.
+    if gdf is None and not _os.path.exists(output_path):
+        raise AIToolError(
+            "geoai no produjo output. Probablemente no se detectaron "
+            "edificios en el área, o el modelo rinde mal sobre este "
+            "tipo de imagen (ver docs/modelos-chile.md). Para Sentinel-2 "
+            "10m/px solo se detectan edificios grandes; mejor usar "
+            "ortofoto ≤1m/px."
+        )
+
+    # Si el archivo existe pero gdf es None, lo leemos para arreglar CRS.
     if gdf is None:
-        raise AIToolError("geoai devolvió None en lugar de un GeoDataFrame.")
+        try:
+            import geopandas as gpd
+            gdf = gpd.read_file(output_path)
+        except Exception:  # noqa: BLE001
+            return 0
 
-    _emit(progress_cb, "Guardando GeoJSON…")
-    # GeoDataFrame.to_file con driver GeoJSON es estable desde
-    # geopandas 0.12. geoai trae geopandas como dep transitiva.
+    # FIX CRÍTICO: geoai a veces devuelve gdf con coords UTM pero CRS=4326
+    # (mal etiquetado), o sin CRS, y al escribir como GeoJSON los polígonos
+    # caen en el océano cuando QGIS los carga. Detectamos y corregimos
+    # comparando con el CRS REAL del raster fuente.
+    gdf = _fix_crs_against_raster(gdf, raster_path, progress_cb)
+
+    # Escribimos (siempre) usando GeoJSON RFC7946 — fuerza coordenadas a
+    # EPSG:4326 reales (lat/lon), que es el único CRS que GeoJSON spec admite.
+    # to_file con driver GeoJSON reproyecta automáticamente si el gdf está
+    # en otro CRS, así que las coordenadas escritas son siempre lat/lon.
+    if gdf.crs is None:
+        # Sin CRS: asumir el del raster como último recurso (con fallback GDAL).
+        raster_crs = _read_raster_crs(raster_path)
+        if raster_crs is not None:
+            try:
+                gdf = gdf.set_crs(raster_crs)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Reproyectar a 4326 antes de escribir GeoJSON (lo standard).
+    if gdf.crs is not None and gdf.crs.to_epsg() != 4326:
+        _emit(progress_cb, f"Reproyectando de {gdf.crs.to_string()} a EPSG:4326…")
+        gdf = gdf.to_crs(epsg=4326)
+
     gdf.to_file(output_path, driver="GeoJSON")
 
     try:
-        return int(len(gdf))
+        n = int(len(gdf))
     except Exception:  # noqa: BLE001
-        return 0
+        n = 0
+
+    if n == 0:
+        # Edge case: el método corrió OK pero no detectó nada. Avisar al
+        # usuario explícitamente en vez de mostrar capa vacía.
+        raise AIToolError(
+            "No se detectaron edificios en el raster. Posibles causas:\n"
+            "- Imagen Sentinel a 10m/px: solo detecta edificios grandes "
+            "(>200 m²). Prueba ortofoto IDE Chile.\n"
+            "- Área no urbana o muy nublada.\n"
+            "- Modelo (USA) rinde mal en zonas rurales chilenas."
+        )
+
+    _emit(progress_cb, f"Detectados {n} edificios.")
+    return n
+
+
+def _read_raster_crs(raster_path: str):
+    """Lee el CRS del raster con cadena de fallbacks.
+
+    Caso reproducido en QGIS-Windows: rasterio.open(naip).crs devuelve
+    None porque PROJ data no está bien configurado dentro del Python
+    embebido de QGIS, pero GDAL nativo sí lee el CRS sin problema.
+
+    Returns:
+        String tipo "EPSG:26911" o WKT, o None si todo falla.
+    """
+    # Estrategia 1: rasterio (preferida cuando funciona).
+    try:
+        import rasterio
+        with rasterio.open(raster_path) as ds:
+            if ds.crs is not None:
+                return ds.crs.to_string()
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Estrategia 2: GDAL nativo (siempre disponible en QGIS).
+    try:
+        from osgeo import gdal, osr
+
+        gdal_ds = gdal.Open(raster_path)
+        if gdal_ds is not None:
+            wkt = gdal_ds.GetProjection()
+            gdal_ds = None  # liberar handle
+            if wkt:
+                srs = osr.SpatialReference()
+                srs.ImportFromWkt(wkt)
+                epsg = srs.GetAuthorityCode(None)
+                if epsg:
+                    return f"EPSG:{epsg}"
+                # WKT como string es válido para pyproj/geopandas también.
+                return wkt
+    except Exception:  # noqa: BLE001
+        pass
+
+    return None
+
+
+def _fix_crs_against_raster(gdf, raster_path: str, progress_cb):
+    """Detecta y corrige CRS mal etiquetado del gdf contra el raster fuente.
+
+    Caso común: geoai devuelve gdf con coords en UTM del raster pero
+    gdf.crs=EPSG:4326 (mal etiquetado). Al escribir como GeoJSON las
+    coords UTM quedan etiquetadas como lat/lon → polígonos caen en el océano.
+
+    Heurística:
+    1. Leer CRS REAL del raster fuente.
+    2. Comparar con gdf.crs declarado.
+    3. Si gdf coords están en rangos de UTM (>180 en X o >90 en Y) pero
+       gdf.crs es 4326 → corregimos: re-etiquetar al CRS del raster.
+    """
+    raster_crs = _read_raster_crs(raster_path)
+    if raster_crs is None:
+        _emit(
+            progress_cb,
+            "Aviso: no pude leer el CRS del raster (ni rasterio ni GDAL). "
+            "Los polígonos pueden quedar mal georeferenciados.",
+        )
+        return gdf
+
+    # Chequeo de coords: si están fuera de rango lat/lon válido, no son 4326.
+    try:
+        bounds = gdf.total_bounds  # (minx, miny, maxx, maxy)
+        coords_look_like_utm = (
+            abs(bounds[0]) > 180
+            or abs(bounds[2]) > 180
+            or abs(bounds[1]) > 90
+            or abs(bounds[3]) > 90
+        )
+    except Exception:  # noqa: BLE001
+        coords_look_like_utm = False
+
+    if coords_look_like_utm:
+        # gdf.crs declarado puede ser 4326 (incorrecto) o None.
+        # Forzamos al CRS del raster (las coords sí matchean ese CRS).
+        if gdf.crs is None or gdf.crs.to_epsg() == 4326:
+            _emit(
+                progress_cb,
+                f"Detectado CRS mal etiquetado: coords no son lat/lon, "
+                f"re-etiquetando como {raster_crs}…",
+            )
+            # set_crs sin allow_override falla si ya hay CRS; usamos allow_override.
+            # raster_crs es string ("EPSG:26911") o WKT — geopandas acepta ambos.
+            gdf = gdf.set_crs(raster_crs, allow_override=True)
+
+    return gdf
 
 
 __all__ = ["ExtractBuildingsTool"]

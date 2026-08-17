@@ -17,16 +17,18 @@ from typing import Optional
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
+    QApplication,
     QDockWidget,
     QLabel,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
-from ..ai import is_geoai_available
+from ..ai import is_geoai_available, is_geoai_warmed_up, warm_up_geoai
 from ..ai.tools import AITool, get_tools
 from ..error_utils import log_full_error, safe_error_message
 from ..styles import apply_pudumaps_style
@@ -165,6 +167,16 @@ class AIToolsDock(QDockWidget):
             # Usuario canceló el diálogo de parámetros.
             return
 
+        # Warm-up de geoai en el MAIN thread la primera vez.
+        # PyTorch en Windows no puede inicializar sus DLLs desde threads
+        # worker (caso QgsTask) — falla con "DLL load failed while
+        # importing lib". Importar acá en el main thread carga torch en
+        # sys.modules; los QgsTask subsiguientes lo encuentran cacheado.
+        if "geoai" in tool.requires and not is_geoai_warmed_up():
+            if not self._warm_up_blocking():
+                # Falló el import — toast ya mostrado, no lanzamos task.
+                return
+
         output_path = _temp_output_path(tool.id, suffix=tool.output_suffix)
 
         # Import lazy: QgsApplication y AIToolTask solo cuando hace falta.
@@ -201,6 +213,52 @@ class AIToolsDock(QDockWidget):
         # QGIS lo termine. addTask transfiere ownership pero algunas
         # combinaciones de PyQt/sip se confunden si pierdes la ref.
         self._last_task = task
+
+    def _warm_up_blocking(self) -> bool:
+        """Carga geoai en el main thread con un modal "Cargando…".
+
+        Bloquea el UI por 30-90s la primera vez por sesión. Es inevitable
+        en QGIS-Windows: PyTorch debe inicializarse desde el main thread
+        o falla con DLL load. Llamadas posteriores son no-op (idempotente
+        — `is_geoai_warmed_up()` corta antes de invocar esta).
+
+        Returns:
+            True si el import tuvo éxito y se puede lanzar el QgsTask.
+            False si falló (ya mostró toast al usuario).
+        """
+        progress = QProgressDialog(
+            "Cargando módulo IA por primera vez (30-90 segundos)…\n"
+            "QGIS no responderá durante este lapso. NO lo cierres.\n"
+            "Esto solo pasa una vez por sesión.",
+            None,  # sin botón Cancelar — interrumpir aquí dejaría torch
+                   # a medias y haría falta reiniciar QGIS.
+            0,
+            0,  # indeterminado
+            self,
+        )
+        progress.setWindowTitle("Pudumaps · IA — Cargando módulo")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setCancelButton(None)
+        progress.show()
+        # Forzar repaint del modal antes de bloquear con import.
+        QApplication.processEvents()
+
+        try:
+            warm_up_geoai()
+        except Exception as e:  # noqa: BLE001
+            progress.close()
+            log_full_error("ai_panel._warm_up_blocking", e)
+            QMessageBox.critical(
+                self,
+                "Pudumaps · IA",
+                f"No se pudo cargar el módulo IA:\n\n{safe_error_message(e)}\n\n"
+                "Verifica que ejecutaste 'Instalar módulo IA' y reinicia QGIS.",
+            )
+            return False
+
+        progress.close()
+        return True
 
     def _log(self, msg: str) -> None:
         """Hook reservado para mostrar progreso. Por ahora a console."""
@@ -248,6 +306,11 @@ def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
     Despacha por extensión: GeoTIFF/VRT → `QgsRasterLayer`, GeoJSON/GPKG/
     SHP → `QgsVectorLayer`. Extensiones desconocidas se intentan como
     vector primero (cubre el caso más común).
+
+    Para rásters con ≥3 bandas (caso típico: Sentinel-2 RGB descargado),
+    aplica un renderer multibanda con stretch min-max automático. Sin
+    esto QGIS los renderiza en grayscale tomando solo banda 1 y la
+    imagen se ve negra/sin contraste.
     """
     if iface is None:
         return
@@ -257,6 +320,8 @@ def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
 
         if ext in _RASTER_EXTS:
             layer = QgsRasterLayer(path, layer_name)
+            if layer.isValid() and layer.bandCount() >= 3:
+                _apply_rgb_renderer(layer)
         else:
             # _VECTOR_EXTS y fallback genérico.
             layer = QgsVectorLayer(path, layer_name, "ogr")
@@ -267,6 +332,42 @@ def _load_result_as_layer(iface, path: str, layer_name: str) -> None:
         QgsProject.instance().addMapLayer(layer)
     except Exception as e:  # noqa: BLE001
         log_full_error("ai_panel._load_result_as_layer", e)
+
+
+def _apply_rgb_renderer(layer) -> None:
+    """Configura un raster multibanda como composición RGB con stretch.
+
+    Por defecto QGIS carga rásters multibanda en grayscale (solo banda 1).
+    Para Sentinel-2 y ortofotos RGB queremos R=1, G=2, B=3 + estiramiento
+    min-max para contraste. Esto reproduce lo que el usuario haría manualmente
+    desde Simbología → Multibanda en color → Stretch min/max.
+
+    Tolerante a fallos: si algo de la API de QGIS cambia entre versiones,
+    silenciamos el error y dejamos el renderer default. La capa se carga
+    igual, solo se ve negra hasta que el usuario configure manualmente.
+    """
+    try:
+        from qgis.core import (
+            QgsContrastEnhancement,
+            QgsMultiBandColorRenderer,
+            QgsRasterMinMaxOrigin,
+        )
+
+        renderer = QgsMultiBandColorRenderer(layer.dataProvider(), 1, 2, 3)
+        layer.setRenderer(renderer)
+
+        # Aplicar stretch min/max sobre el extent visible. Esto da
+        # contraste útil para imagen Sentinel-2 (rango típico 0-3000 en
+        # vez del 0-65535 del uint16).
+        layer.setContrastEnhancement(
+            QgsContrastEnhancement.StretchToMinimumMaximum,
+            QgsRasterMinMaxOrigin.MinMax,
+        )
+        layer.triggerRepaint()
+    except Exception:  # noqa: BLE001
+        # No es fatal — la capa quedará en grayscale default y el usuario
+        # puede arreglarlo desde Simbología. Loggear sería ruido.
+        pass
 
 
 __all__ = ["AIToolsDock"]

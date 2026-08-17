@@ -2,19 +2,15 @@
 
 Official QGIS plugin for [Pudumaps](https://pudumaps.cl) — the Chilean geospatial cloud platform. Browse, pull, push and sync projects and layers between QGIS and your Pudumaps account.
 
-> **Status:** experimental (v0.1.0) · Phase 1 complete · Phase 2 (Open Project) coming soon
+> **Status:** experimental (v0.8.0) — not yet published to plugins.qgis.org
 
 ## Features
 
-**Available now (v0.1.0)**
 - Settings dialog with encrypted API key storage via `QgsAuthManager`
-- Connection test against the Pudumaps REST API
+- Open a Pudumaps project as QGIS layers (pull), with an automatic layer group per project
+- Upload a QGIS vector layer to a Pudumaps project (push), from the menu, toolbar or layer-panel context menu
+- Bidirectional sync with per-layer conflict detection (unchanged / local-only / remote-only / conflict / new / deleted)
 - Installable ZIP ready for QGIS 3.22 LTR and later
-
-**Coming in next versions**
-- Open a Pudumaps project as QGIS layers (v0.2)
-- Upload a QGIS layer to a Pudumaps project (v0.3)
-- Bidirectional sync with conflict detection (v0.4)
 
 ## Install
 
@@ -52,7 +48,7 @@ black --check .
 
 # Build installable ZIP (cross-platform Python script)
 python scripts/build.py
-# → dist/pudumaps-qgis-0.1.0.zip
+# → dist/pudumaps-qgis-<version>.zip (version read from metadata.txt)
 #
 # Or on Linux/macOS:
 # ./scripts/build.sh

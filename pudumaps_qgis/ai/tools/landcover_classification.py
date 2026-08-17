@@ -30,11 +30,13 @@ from .base import AITool, AIToolError, ProgressCallback
 
 class LandCoverClassificationTool(AITool):
     id = "landcover_classification"
-    name = "Clasificar uso de suelo"
+    name = "Clasificar uso de suelo [experimental]"
     description = (
-        "Clasifica cada píxel del raster RGB en categorías de uso de suelo "
-        "(urbano, agua, bosque, cultivos, matorral, suelo desnudo). "
-        "Las clases se traducen al español + ecorregión chilena cuando aplica."
+        "Clasifica cada píxel del raster RGB en categorías de uso de suelo. "
+        "EXPERIMENTAL: el modelo default de geoai es Mask2Former entrenado "
+        "para escenas urbanas (cityscapes), NO para imagen satelital de "
+        "landcover. Resultados pueden ser raros sobre Sentinel-2. "
+        "Mejora planeada para v0.8 con modelo HF específico de landcover."
     )
     requires = ["geoai"]
     input_kind = "raster"
@@ -128,7 +130,19 @@ def _run_geoai_landcover(
     output_path: str,
     progress_cb: Optional[ProgressCallback],
 ) -> Tuple[List[str], Optional[Tuple[float, float, float, float]]]:
-    """Aísla la llamada a la API de geoai para landcover.
+    """Llamada real a la API de geoai 0.10.x.
+
+    geoai 0.10 NO tiene `LandCoverClassifier`. Lo más cercano es la
+    función `image_segmentation()` en `geoai.hf` que usa modelos HF de
+    segmentación semántica genérica. Por defecto baja
+    `facebook/mask2former-swin-large-cityscapes-semantic` que está
+    entrenado para escenas URBANAS (calles, autos, peatones, edificios)
+    — NO para landcover satelital.
+
+    Sobre ortofoto urbana de Santiago el resultado es razonable; sobre
+    Sentinel-2 dará clases extrañas. Esta tool queda como experimental
+    hasta v0.8 donde montaremos un modelo HF específico de landcover
+    (ej. Prithvi de NASA/IBM).
 
     Returns:
         (class_names_en_orden, bbox_en_4326_o_None)
@@ -136,63 +150,66 @@ def _run_geoai_landcover(
     _emit(progress_cb, "Importando geoai…")
     import geoai  # noqa: F401
 
-    _emit(progress_cb, "Inicializando clasificador de uso de suelo…")
+    _emit(progress_cb, "Inicializando segmentador HF (modelo se descarga ~1.5 GB la 1a vez)…")
 
-    classifier = None
-    try:
-        from geoai import LandCoverClassifier  # type: ignore[attr-defined]
-        classifier = LandCoverClassifier()
-    except (ImportError, AttributeError):
-        pass
-
-    if classifier is not None and hasattr(classifier, "predict"):
-        _emit(progress_cb, "Ejecutando inferencia…")
-        result = classifier.predict(raster_path, output_path=output_path)
-    else:
-        fn = (
-            getattr(geoai, "classify_landcover", None)
-            or getattr(geoai, "predict_landcover", None)
+    # geoai.image_segmentation está exportado desde geoai/hf.py.
+    # Firma típica: image_segmentation(tif_path, output_path, ...).
+    fn = getattr(geoai, "image_segmentation", None)
+    if fn is None:
+        raise AIToolError(
+            "Esta versión de geoai no expone image_segmentation(). "
+            "Verifica que geoai-py==0.10.0 esté instalado "
+            "(Pudumaps → Instalar módulo IA…)."
         )
-        if fn is None:
-            raise AIToolError(
-                "Esta versión de geoai no expone LandCoverClassifier ni "
-                "classify_landcover(). Verifica que geoai-py==0.10.0 "
-                "esté instalado (Pudumaps → Instalar módulo IA…)."
-            )
-        _emit(progress_cb, "Ejecutando inferencia…")
-        result = fn(raster_path, output_path=output_path)
 
-    if result is None:
-        raise AIToolError("geoai devolvió None en lugar de un resultado.")
+    _emit(progress_cb, "Ejecutando segmentación semántica…")
+    try:
+        result = fn(tif_path=raster_path, output_path=output_path)
+    except TypeError:
+        # Algunas versiones usan kwargs distintos. Probar posicional.
+        result = fn(raster_path, output_path)
 
-    # Nombres de clase: distintas versiones de geoai los exponen distinto.
-    class_names = _extract_class_names(result, classifier)
+    # La función devuelve (output_path, label_mapping, scores). Aceptamos
+    # cualquier shape razonable y extraemos las clases.
+    class_names = _extract_class_names_from_result(result)
     bbox = _extract_bbox_from_raster(raster_path)
     return class_names, bbox
 
 
-def _extract_class_names(result, classifier) -> List[str]:
-    """Extrae lista de nombres de clase del objeto que devuelve geoai.
+def _extract_class_names_from_result(result) -> List[str]:
+    """Acepta tuple, dict, o list y devuelve lista de nombres de clase."""
+    if result is None:
+        return _default_landcover_classes()
 
-    Heurística: revisa atributos comunes (`class_names`, `classes`,
-    `labels`) tanto en el resultado como en el classifier. Si nada
-    funciona, devuelve nombres genéricos.
-    """
-    for src in (result, classifier):
-        if src is None:
-            continue
-        for attr in ("class_names", "classes", "labels"):
-            value = getattr(src, attr, None)
-            if isinstance(value, (list, tuple)) and value:
-                return [str(v) for v in value]
-            if isinstance(value, dict) and value:
-                # dict idx→nombre: ordenar por idx.
-                try:
-                    items = sorted(value.items(), key=lambda kv: int(kv[0]))
-                    return [str(v) for _k, v in items]
-                except (TypeError, ValueError):
-                    pass
-    # Fallback: nombres genéricos comunes en modelos de landcover.
+    # tuple (path, mapping, scores)?
+    if isinstance(result, tuple):
+        for item in result:
+            if isinstance(item, dict) and item:
+                # Mapping idx→name o name→idx.
+                values = list(item.values())
+                if all(isinstance(v, str) for v in values):
+                    return values
+                keys = list(item.keys())
+                if all(isinstance(k, str) for k in keys):
+                    return keys
+            if isinstance(item, (list, tuple)) and item and isinstance(item[0], str):
+                return list(item)
+        # No encontramos nombres claros — fallback.
+        return _default_landcover_classes()
+
+    if isinstance(result, dict):
+        values = list(result.values())
+        if values and all(isinstance(v, str) for v in values):
+            return values
+
+    if isinstance(result, (list, tuple)) and result and isinstance(result[0], str):
+        return list(result)
+
+    return _default_landcover_classes()
+
+
+def _default_landcover_classes() -> List[str]:
+    """Nombres genéricos cuando no podemos extraerlos del resultado."""
     return ["built", "agriculture", "forest", "shrubland", "grassland", "water", "bare"]
 
 

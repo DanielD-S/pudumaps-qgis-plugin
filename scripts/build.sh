@@ -29,6 +29,12 @@ zip -r "$ZIP_PATH" pudumaps_qgis \
   -x "*.pyc" \
   -x "*/.DS_Store" \
   -x "*/.pytest_cache/*" \
+  -x "pudumaps_qgis/ai/*" \
+  -x "pudumaps_qgis/dialogs/ai_panel.py" \
+  -x "pudumaps_qgis/dialogs/install_ai_dialog.py" \
+  -x "pudumaps_qgis/dialogs/change_detection_dialog.py" \
+  -x "pudumaps_qgis/dialogs/download_sentinel_dialog.py" \
+  -x "pudumaps_qgis/icons/ai.svg" \
   > /dev/null
 
 echo "✓ Built $ZIP_PATH"

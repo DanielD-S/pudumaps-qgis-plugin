@@ -14,12 +14,13 @@ GDAL/rasterio que QGIS ya provee.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from . import qgis_python_executable
+from . import qgis_python_diagnostics, qgis_python_executable
 
 # Callback invocado por cada línea de stdout/stderr del proceso pip.
 # El UI lo usa para actualizar una QProgressDialog con texto.
@@ -47,7 +48,12 @@ class InstallError(Exception):
     """
 
 
-def _pip_command(package: str, version: Optional[str], extras: Optional[str]) -> List[str]:
+def _pip_command(
+    package: str,
+    version: Optional[str],
+    extras: Optional[str],
+    index_url: Optional[str] = None,
+) -> List[str]:
     """Construye el comando pip pineando versión si se provee.
 
     Ejemplos:
@@ -55,13 +61,20 @@ def _pip_command(package: str, version: Optional[str], extras: Optional[str]) ->
             → [..., "geoai-py==0.10.0"]
         _pip_command("GeoAgent", "0.4.0", "ollama,geoai")
             → [..., "GeoAgent[ollama,geoai]==0.4.0"]
+        _pip_command("torch", None, None, index_url="https://download.pytorch.org/whl/cpu")
+            → [..., "--index-url", "https://download.pytorch.org/whl/cpu", "torch"]
+
+    Args:
+        index_url: si se provee, fuerza a pip a usar ese índice EN LUGAR
+            del default PyPI. Necesario para forzar CPU-only de PyTorch
+            (https://download.pytorch.org/whl/cpu).
     """
     spec = package
     if extras:
         spec = f"{spec}[{extras}]"
     if version:
         spec = f"{spec}=={version}"
-    return [
+    cmd = [
         qgis_python_executable(),
         "-m",
         "pip",
@@ -69,14 +82,18 @@ def _pip_command(package: str, version: Optional[str], extras: Optional[str]) ->
         "--user",
         "--disable-pip-version-check",
         "--no-input",
-        spec,
     ]
+    if index_url:
+        cmd.extend(["--index-url", index_url])
+    cmd.append(spec)
+    return cmd
 
 
 def install_package(
     package: str,
     version: Optional[str] = None,
     extras: Optional[str] = None,
+    index_url: Optional[str] = None,
     progress_cb: Optional[ProgressCallback] = None,
     timeout_s: int = 1800,
 ) -> InstallResult:
@@ -96,19 +113,64 @@ def install_package(
     Returns:
         InstallResult con success, exit_code y output combinados.
     """
-    cmd = _pip_command(package, version, extras)
+    cmd = _pip_command(package, version, extras, index_url=index_url)
     output_lines: List[str] = []
 
-    try:
-        process = subprocess.Popen(  # noqa: S603 (cmd construido localmente)
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            encoding="utf-8",
-            errors="replace",
+    # Diagnóstico al inicio del log: si algo falla, el reporte de bug
+    # incluye sys.executable / sys.prefix / resolved_python para que
+    # podamos arreglar la detección en futuras versiones.
+    diag = qgis_python_diagnostics()
+    diag_lines = ["[pudumaps-ai diagnostics]"] + [
+        f"  {k} = {v}" for k, v in diag.items()
+    ]
+    for line in diag_lines:
+        output_lines.append(line)
+        if progress_cb is not None:
+            try:
+                progress_cb(line)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Defensa: si el python resuelto no es un archivo, abortar antes
+    # de invocar subprocess (que produciría el error críptico actual).
+    python_exe = cmd[0]
+    base = os.path.basename(python_exe).lower()
+    if not os.path.isfile(python_exe) or not (
+        base.startswith("python") and base.endswith(".exe")
+    ) and sys.platform == "win32":
+        return InstallResult(
+            package=package,
+            version=version,
+            success=False,
+            exit_code=-4,
+            output="\n".join(output_lines),
+            error_message=(
+                f"No se pudo localizar python.exe del Python embebido de QGIS. "
+                f"Resolví: {python_exe}. "
+                f"Reporta este bug con el bloque [pudumaps-ai diagnostics] del log."
+            ),
         )
+
+    # CREATE_NO_WINDOW (0x08000000): suprime la ventana de consola que
+    # Windows abre por default cuando subprocess.Popen lanza un .exe.
+    # Sin esto, el usuario ve un cmd.exe negro y feo mientras pip baja
+    # PyTorch (~500 MB). En Linux/macOS la flag no existe.
+    popen_kwargs = {
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.STDOUT,
+        "text": True,
+        "bufsize": 1,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    if sys.platform == "win32":
+        # CREATE_NO_WINDOW vive en subprocess en Python 3.7+; en versiones
+        # más viejas hay que usar 0x08000000 literal.
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        popen_kwargs["creationflags"] = no_window
+
+    try:
+        process = subprocess.Popen(cmd, **popen_kwargs)  # noqa: S603
     except OSError as e:
         return InstallResult(
             package=package,

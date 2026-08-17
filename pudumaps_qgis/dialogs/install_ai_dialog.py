@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal
+from qgis.PyQt.QtCore import Qt, QThread, QTimer, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -32,6 +32,7 @@ from ..ai import (
     is_geoai_available,
 )
 from ..ai.installer import InstallResult, install_package
+from ..ai.pip_progress import PipProgressParser
 from ..error_utils import log_full_error, safe_error_message
 from ..styles import apply_pudumaps_style
 from ..ui_helpers import build_header, separator
@@ -40,6 +41,11 @@ from ..ui_helpers import build_header, separator
 class _InstallWorker(QThread):
     """Worker thread que ejecuta una secuencia de install_package().
 
+    Cada tupla en `packages` es (name, version, extras, index_url) — el
+    index_url permite forzar PyTorch CPU-only desde el índice de PyTorch
+    (https://download.pytorch.org/whl/cpu) en vez del default PyPI que
+    puede pedir variantes CUDA que no funcionan sin GPU NVIDIA + drivers.
+
     Emite `line` por cada línea de stdout y `finished_with_results` al
     terminar con la lista completa de InstallResult.
     """
@@ -47,20 +53,22 @@ class _InstallWorker(QThread):
     line = pyqtSignal(str)
     finished_with_results = pyqtSignal(list)
 
-    def __init__(self, packages: List[Tuple[str, str, Optional[str]]]):
-        """packages = [(name, version, extras), ...]"""
+    def __init__(self, packages: List[Tuple[str, str, Optional[str], Optional[str]]]):
+        """packages = [(name, version, extras, index_url), ...]"""
         super().__init__()
         self._packages = packages
         self._results: List[InstallResult] = []
 
     def run(self) -> None:
-        for name, version, extras in self._packages:
-            self.line.emit(f"→ Instalando {name}=={version}…")
+        for name, version, extras, index_url in self._packages:
+            label = f"{name}=={version}" if version else name
+            self.line.emit(f"→ Instalando {label}…")
             try:
                 result = install_package(
                     package=name,
                     version=version,
                     extras=extras,
+                    index_url=index_url,
                     progress_cb=lambda l: self.line.emit(l),
                 )
             except Exception as e:  # noqa: BLE001
@@ -79,7 +87,44 @@ class _InstallWorker(QThread):
             if not result.success:
                 # No seguir con el resto si uno falla.
                 break
+
+        # Cleanup post-instalación: desinstalar pyarrow si quedó instalado.
+        # Su `lib.pyd` choca con DLLs C++ de QGIS y causa
+        # "DLL load failed while importing lib" al hacer `import geoai`
+        # desde el plugin. sklearn lo importa defensivamente y cae sin él
+        # — no afecta funcionalidad de las acciones IA. Documentado en
+        # docs/modelos-chile.md.
+        if any(r.success for r in self._results):
+            self._cleanup_pyarrow()
+
         self.finished_with_results.emit(self._results)
+
+    def _cleanup_pyarrow(self) -> None:
+        """Best-effort uninstall de pyarrow tras instalar geoai/GeoAgent.
+
+        Si pyarrow no está instalado, pip lo skipea sin error. Si falla
+        por permisos u otra razón, solo loggeamos — no abortamos.
+        """
+        self.line.emit("→ Limpiando pyarrow (causa DLL conflict con QGIS)…")
+        try:
+            from ..ai.installer import qgis_python_executable
+            import subprocess as _subprocess
+
+            _subprocess.run(  # noqa: S603
+                [
+                    qgis_python_executable(),
+                    "-m",
+                    "pip",
+                    "uninstall",
+                    "-y",
+                    "--disable-pip-version-check",
+                    "pyarrow",
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+        except Exception as e:  # noqa: BLE001
+            log_full_error("install_ai_dialog._cleanup_pyarrow", e)
 
 
 class InstallAIDialog(QDialog):
@@ -129,14 +174,20 @@ class InstallAIDialog(QDialog):
         warn = QLabel(
             "<b>Antes de continuar:</b>"
             "<ul>"
+            "<li>La descarga toma <b>10-30 minutos</b> según tu conexión "
+            "(~500 MB de PyTorch + dependencias).</li>"
             "<li>En Windows: instala <i>Microsoft Visual C++ Redistributable</i> "
             "si no lo tienes (PyTorch lo necesita).</li>"
-            "<li>Conexión a internet estable durante la descarga.</li>"
+            "<li>Conexión a internet estable durante toda la descarga.</li>"
             "<li>Cierra otros plugins que usen Python intensivamente.</li>"
+            "<li><b>Si aparece una ventana de consola negra: NO la cierres</b> — "
+            "es pip mostrando progreso. Se cierra sola al terminar.</li>"
             "</ul>"
             "<small>Las dependencias se instalan en tu perfil de usuario "
             "(<code>pip install --user</code>) — no requieren permisos "
-            "de administrador.</small>"
+            "de administrador. Mientras descarga, el progreso aparece "
+            "tanto aquí abajo como en la ventana de consola si llega a "
+            "abrirse.</small>"
         )
         warn.setWordWrap(True)
         warn.setTextFormat(Qt.RichText)
@@ -171,13 +222,40 @@ class InstallAIDialog(QDialog):
         """True si al menos una instalación se completó correctamente."""
         return self._installed_anything
 
-    def _selected_packages(self) -> list[tuple[str, str, str | None]]:
-        packages: list[tuple[str, str, str | None]] = []
+    # Índice oficial de PyTorch para wheels CPU-only. Usar este en vez del
+    # default PyPI evita el caso típico Windows en que pip baja una variante
+    # CUDA y al `import torch` falla con DLL load failed (busca CUDA y
+    # no la encuentra, o choca con DLLs de QGIS).
+    _PYTORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
+
+    def _selected_packages(self) -> list[tuple[str, str | None, str | None, str | None]]:
+        """Devuelve la secuencia de instalaciones a correr.
+
+        Cuando se instala geoai-py o GeoAgent, se INSTALA PRIMERO torch
+        CPU-only desde el índice de PyTorch. Así cuando pip resuelve las
+        deps de geoai, ve que torch ya está instalado (en la versión
+        adecuada) y no intenta reinstalar la variante problemática.
+
+        Formato: [(name, version, extras, index_url), ...].
+        """
+        packages: list[tuple[str, str | None, str | None, str | None]] = []
+        needs_torch = (
+            (self.cb_geoai.isChecked() and self.cb_geoai.isEnabled())
+            or (self.cb_geoagent.isChecked() and self.cb_geoagent.isEnabled())
+        )
+        # Si no hay nada que instale geoai, no metas torch — sería desperdicio.
+        if needs_torch:
+            # Sin version pin: dejamos que el índice CPU elija la última
+            # compatible con el Python embebido. Forzar versión específica
+            # aumenta el riesgo de "no wheel para esta Python.minor".
+            packages.append(("torch", None, None, self._PYTORCH_CPU_INDEX))
+            packages.append(("torchvision", None, None, self._PYTORCH_CPU_INDEX))
+
         if self.cb_geoai.isChecked() and self.cb_geoai.isEnabled():
-            packages.append((GEOAI_PACKAGE, GEOAI_PINNED_VERSION, None))
+            packages.append((GEOAI_PACKAGE, GEOAI_PINNED_VERSION, None, None))
         if self.cb_geoagent.isChecked() and self.cb_geoagent.isEnabled():
             # Ollama + integración geoai en un solo install.
-            packages.append((GEOAGENT_PACKAGE, GEOAGENT_PINNED_VERSION, "ollama,geoai"))
+            packages.append((GEOAGENT_PACKAGE, GEOAGENT_PINNED_VERSION, "ollama,geoai", None))
         return packages
 
     def _on_install(self) -> None:
@@ -188,11 +266,19 @@ class InstallAIDialog(QDialog):
             )
             return
 
+        # Estimado dinámico: geoai solo = ~35 paquetes; +GeoAgent = ~45.
+        # +5 si también vamos a instalar torch+torchvision al inicio.
+        estimate = 35
+        if any(p[0] == GEOAGENT_PACKAGE for p in packages):
+            estimate = 45
+        if any(p[0] == "torch" for p in packages):
+            estimate += 5
+
         progress = QProgressDialog(
             "Preparando instalación…",
             "Cancelar",
             0,
-            0,  # indeterminate
+            100,  # determinate
             self,
         )
         progress.setWindowTitle("Pudumaps — Instalando IA")
@@ -200,16 +286,45 @@ class InstallAIDialog(QDialog):
         progress.setMinimumDuration(0)
         progress.setAutoClose(False)
         progress.setAutoReset(False)
+        progress.setValue(0)
+
+        # Parser de líneas de pip → progreso estructurado.
+        parser = PipProgressParser(estimate=estimate)
+
+        # Contador de tiempo transcurrido: QTimer cada segundo.
+        # Usamos atributo en el worker para que el callback persista.
+        import time
+
+        start_ts = time.monotonic()
+        elapsed_timer = QTimer(progress)
+        elapsed_timer.setInterval(1000)
+
+        def update_label() -> None:
+            snap = parser.snapshot
+            elapsed_s = int(time.monotonic() - start_ts)
+            mm, ss = divmod(elapsed_s, 60)
+            time_str = f"{mm:02d}:{ss:02d}"
+            last = snap.last_line
+            if len(last) > 70:
+                last = "…" + last[-69:]
+            progress.setLabelText(
+                f"{snap.human_summary} · tiempo {time_str}\n{last}"
+            )
+
+        elapsed_timer.timeout.connect(update_label)
+        elapsed_timer.start()
 
         worker = _InstallWorker(packages)
 
         def on_line(text: str) -> None:
-            # Mostrar solo las últimas ~80 chars para que el dialog no
-            # se estire indefinidamente.
-            shown = text if len(text) <= 80 else "…" + text[-79:]
-            progress.setLabelText(shown)
+            parser.feed(text)
+            snap = parser.snapshot
+            progress.setValue(snap.percent)
+            update_label()
 
         def on_done(results: list[InstallResult]) -> None:
+            elapsed_timer.stop()
+            progress.setValue(100)
             progress.close()
             self._show_summary(results)
             worker.deleteLater()

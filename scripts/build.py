@@ -19,9 +19,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = ROOT / "pudumaps_qgis"
 DIST_DIR = ROOT / "dist"
-EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".ruff_cache"}
+EXCLUDED_DIRS = {"__pycache__", ".pytest_cache", ".ruff_cache", "ai"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 EXCLUDED_FILES = {".DS_Store", "Thumbs.db"}
+# Diálogos IA: viven en dialogs/ (no en ai/, que ya se excluye arriba) e
+# importan de ese paquete, así que se excluyen aparte para no romper el
+# zip publicado. El módulo IA queda fuera del build hasta que se retome.
+EXCLUDED_RELATIVE_FILES = {
+    Path("pudumaps_qgis/dialogs/ai_panel.py"),
+    Path("pudumaps_qgis/dialogs/install_ai_dialog.py"),
+    Path("pudumaps_qgis/dialogs/change_detection_dialog.py"),
+    Path("pudumaps_qgis/dialogs/download_sentinel_dialog.py"),
+    Path("pudumaps_qgis/icons/ai.svg"),
+}
 
 
 def read_version() -> str:
@@ -36,6 +46,8 @@ def should_skip(path: Path) -> bool:
     if path.name in EXCLUDED_FILES:
         return True
     if path.suffix in EXCLUDED_SUFFIXES:
+        return True
+    if path.relative_to(ROOT) in EXCLUDED_RELATIVE_FILES:
         return True
     return any(part in EXCLUDED_DIRS for part in path.parts)
 

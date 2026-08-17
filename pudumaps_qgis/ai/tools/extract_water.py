@@ -102,49 +102,100 @@ def _run_geoai_water(
     output_path: str,
     progress_cb: Optional[ProgressCallback],
 ) -> int:
-    """Aísla la llamada a la API de geoai para water extraction.
+    """Llamada real a la API de geoai 0.10.x.
 
-    Si geoai-py cambia su API entre versiones, este es el ÚNICO lugar
-    a editar. Por eso pineamos `geoai-py==0.10.0` y bumps son manuales.
+    geoai 0.10 NO tiene un `WaterBodyExtractor` dedicado. La forma
+    soportada es usar `CLIPSegmentation` con text prompt:
+    `segment_image(input_path, output_path, text_prompt="water bodies, lakes, rivers")`.
+
+    Bajo el capó usa CLIP-Seg (Hugging Face), pre-entrenado en imágenes
+    naturales — funciona razonable sobre orto RGB y Sentinel-2 RGB.
+    Descarga el modelo (~600 MB) la primera vez.
     """
     _emit(progress_cb, "Importando geoai…")
     import geoai  # noqa: F401
 
-    _emit(progress_cb, "Inicializando extractor de agua…")
+    _emit(progress_cb, "Inicializando CLIPSegmentation para agua…")
 
-    extractor = None
     try:
-        # API estable 0.10.x.
-        from geoai import WaterBodyExtractor  # type: ignore[attr-defined]
-        extractor = WaterBodyExtractor()
-    except (ImportError, AttributeError):
+        from geoai import CLIPSegmentation  # type: ignore[attr-defined]
+    except (ImportError, AttributeError) as e:
+        raise AIToolError(
+            "Esta versión de geoai no expone CLIPSegmentation. "
+            "Verifica que geoai-py==0.10.0 esté instalado "
+            "(Pudumaps → Instalar módulo IA…)."
+        ) from e
+
+    segmenter = CLIPSegmentation()
+
+    _emit(progress_cb, "Ejecutando segmentación de cuerpos de agua (puede descargar modelo ~600 MB la 1a vez)…")
+
+    # CLIPSegmentation produce un raster máscara, no polígonos directamente.
+    # Por eso le pedimos un archivo intermedio .tif y después vectorizamos.
+    import os as _os
+    mask_tif = output_path.replace(".geojson", "_water_mask.tif")
+    if not mask_tif.endswith(".tif"):
+        mask_tif = output_path + ".tif"
+
+    try:
+        segmenter.segment_image(
+            input_path=raster_path,
+            output_path=mask_tif,
+            text_prompt="water bodies, lakes, rivers, reservoirs",
+            threshold=0.4,  # Algo permisivo para zonas mixtas (agua + sedimento).
+        )
+    except TypeError:
+        # Posicional por si los keywords difieren entre versiones.
+        segmenter.segment_image(raster_path, mask_tif, "water bodies, lakes, rivers, reservoirs")
+
+    if not _os.path.exists(mask_tif):
+        raise AIToolError(
+            "CLIPSegmentation no produjo máscara. Probablemente no se "
+            "detectó agua en el área (intenta bajar el threshold o "
+            "verifica que el raster tenga cuerpos de agua visibles)."
+        )
+
+    _emit(progress_cb, "Vectorizando máscara a polígonos…")
+    n = _vectorize_mask_to_geojson(mask_tif, output_path)
+
+    # Cleanup.
+    try:
+        _os.remove(mask_tif)
+    except OSError:
         pass
 
-    if extractor is not None and hasattr(extractor, "predict"):
-        _emit(progress_cb, "Ejecutando inferencia…")
-        gdf = extractor.predict(raster_path)  # type: ignore[union-attr]
+    return n
+
+
+def _vectorize_mask_to_geojson(mask_path: str, output_path: str) -> int:
+    """Convierte un raster máscara binaria a polígonos GeoJSON.
+
+    Returns: número de polígonos generados.
+    """
+    import geopandas as gpd
+    import rasterio
+    from rasterio.features import shapes
+    from shapely.geometry import shape
+
+    with rasterio.open(mask_path) as ds:
+        mask = ds.read(1)
+        transform = ds.transform
+        crs = ds.crs
+
+    # Considera "agua" cualquier pixel > 0 (CLIPSegmentation a veces
+    # produce máscara binaria, a veces float 0-1 según threshold).
+    polys = []
+    for geom, val in shapes(mask, mask=mask > 0, transform=transform):
+        polys.append({"geometry": shape(geom), "value": float(val)})
+
+    if not polys:
+        # Crear archivo vacío válido para que la UI no rompa.
+        gdf = gpd.GeoDataFrame(geometry=[], crs=crs)
     else:
-        # Fallback a la función de alto nivel.
-        fn = getattr(geoai, "extract_water", None) or getattr(geoai, "extract_water_bodies", None)
-        if fn is None:
-            raise AIToolError(
-                "Esta versión de geoai no expone WaterBodyExtractor ni "
-                "extract_water(). Verifica que geoai-py==0.10.0 esté "
-                "instalado (Pudumaps → Instalar módulo IA…)."
-            )
-        _emit(progress_cb, "Ejecutando inferencia…")
-        gdf = fn(raster_path)
+        gdf = gpd.GeoDataFrame(polys, crs=crs)
 
-    if gdf is None:
-        raise AIToolError("geoai devolvió None en lugar de un GeoDataFrame.")
-
-    _emit(progress_cb, "Guardando GeoJSON…")
     gdf.to_file(output_path, driver="GeoJSON")
-
-    try:
-        return int(len(gdf))
-    except Exception:  # noqa: BLE001
-        return 0
+    return len(gdf)
 
 
 __all__ = ["ExtractWaterTool"]
