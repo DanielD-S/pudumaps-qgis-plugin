@@ -6,6 +6,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
 from .error_utils import log_full_error, safe_error_message
+from .project_loader import PROP_LAYER_TYPE
 
 PLUGIN_DIR = Path(__file__).resolve().parent
 ICONS_DIR = PLUGIN_DIR / "icons"
@@ -136,6 +137,19 @@ class PudumapsPlugin:
                 self.iface.mainWindow(),
                 "Pudumaps",
                 "Solo se pueden subir capas vectoriales a Pudumaps.",
+            )
+            return
+        if layer.customProperty(PROP_LAYER_TYPE, "geojson") != "geojson":
+            # Capa externa (arcgis_feature) pulled desde el catálogo de
+            # Capas Oficiales — es una referencia en vivo al servicio de
+            # origen, no datos propios. "Subir" sobreescribiría el row con
+            # el subset de features cargado en pantalla (bbox parcial) y
+            # rompería la semántica de capa externa en el proyecto remoto.
+            QMessageBox.warning(
+                self.iface.mainWindow(),
+                "Pudumaps",
+                "Esta capa es una referencia externa en vivo (Capas Oficiales) — "
+                "no se puede subir como capa propia.",
             )
             return
 
