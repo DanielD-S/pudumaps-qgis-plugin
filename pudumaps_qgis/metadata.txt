@@ -3,12 +3,12 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.1
+version=0.8.2
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
-about=Official Pudumaps plugin for QGIS. Lets you browse your Pudumaps projects, open them as QGIS layers, upload new layers from QGIS to the cloud and sync changes both ways. Requires a Pudumaps account with API access (Pro plan or higher). Get a free API key from https://pudumaps.cl
-about[es]=Plugin oficial de Pudumaps para QGIS. Permite navegar tus proyectos, abrirlos como capas QGIS, subir nuevas capas a la nube y sincronizar cambios en ambas direcciones. Requiere una cuenta Pudumaps con acceso API (plan Pro o superior). Obtén tu API key en https://pudumaps.cl
+about=Official Pudumaps plugin for QGIS. Lets you browse your Pudumaps projects, open them as QGIS layers, upload new layers from QGIS to the cloud and sync changes both ways. Requires a free Pudumaps account. Get your API key from https://pudumaps.cl
+about[es]=Plugin oficial de Pudumaps para QGIS. Permite navegar tus proyectos, abrirlos como capas QGIS, subir nuevas capas a la nube y sincronizar cambios en ambas direcciones. Requiere una cuenta Pudumaps gratuita. Obtén tu API key en https://pudumaps.cl
 
 tracker=https://github.com/DanielD-S/pudumaps-qgis-plugin/issues
 repository=https://github.com/DanielD-S/pudumaps-qgis-plugin
@@ -23,7 +23,13 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.1 (2026-08-17) — Fix: capas externas del catálogo Capas Oficiales quedaban invisibles
+changelog=0.8.2 (2026-08-18) — El acceso a la API ya no requiere plan Pro
+  * Pudumaps abrió acceso a la API (y por lo tanto al plugin) a todos
+    los planes, incluido Free — antes requería Pro o superior. Se
+    actualiza el texto de metadata.txt y README.md, que seguían
+    diciendo lo contrario.
+
+ 0.8.1 (2026-08-17) — Fix: capas externas del catálogo Capas Oficiales quedaban invisibles
   * BUG REPORTADO: al abrir un proyecto con capas del catálogo "Capas
     Oficiales de Chile" (WMS/ArcGIS MapServer/FeatureServer), el canvas
     quedaba completamente en blanco y sin zoom para las 7 capas del
