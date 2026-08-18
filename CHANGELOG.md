@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.2] — 2026-08-18
+
+### Changed
+- El acceso a la API de Pudumaps ya no requiere plan Pro o superior —
+  ahora está disponible en todos los planes, incluido Free. Se
+  actualiza `metadata.txt` y `README.md`, que decían lo contrario.
+
 ## [0.8.1] — 2026-08-17
 
 ### Fixed

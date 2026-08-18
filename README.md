@@ -21,10 +21,9 @@ Official QGIS plugin for [Pudumaps](https://pudumaps.cl) — the Chilean geospat
 
 ## Get an API key
 
-1. Sign up / log in at [pudumaps.cl](https://pudumaps.cl)
-2. Upgrade to **Pro** (API access requires Pro plan or higher)
-3. Go to **Configuración → API → Nueva key**
-4. Copy the key (shown only once) and paste it into the plugin settings
+1. Sign up / log in at [pudumaps.cl](https://pudumaps.cl) — free plan works
+2. Go to **Configuración → API → Nueva key**
+3. Copy the key (shown only once) and paste it into the plugin settings
 
 Full API documentation: <https://pudumaps.cl/api-docs.html>
 
