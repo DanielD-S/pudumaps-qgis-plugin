@@ -72,8 +72,11 @@ class PudumapsPlugin:
             self.toolbar.removeAction(action)
         try:
             self.iface.removeCustomActionForLayerType(self._context_action)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            # Best-effort: unload() no debe crashear y dejar el plugin a
+            # medio desinstalar por esto, pero tampoco tragarse el error
+            # en silencio — puede indicar que initGui() nunca terminó.
+            log_full_error("plugin.unload", e)
         del self.toolbar
 
     # ── Actions ──────────────────────────────────────────────────────────

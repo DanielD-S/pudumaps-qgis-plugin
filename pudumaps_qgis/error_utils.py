@@ -70,5 +70,11 @@ def log_full_error(context: str, e: object) -> None:
         QgsMessageLog.logMessage(
             f"{context}: {e!r}", "Pudumaps", level=Qgis.Warning
         )
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as log_error:  # noqa: BLE001
+        # QgsMessageLog no disponible (tests fuera de QGIS, import falla,
+        # etc.) — es el fallback de logging, no hay a quién más avisarle.
+        # stderr en vez de silencio total: no depende de QGIS y da
+        # visibilidad mínima si esto pasa en un entorno real.
+        import sys
+
+        print(f"[pudumaps] {context}: {e!r} (log_error={log_error!r})", file=sys.stderr)

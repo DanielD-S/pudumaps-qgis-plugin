@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.5
+version=0.8.6
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,22 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.5 (2026-08-19) — Fix: faltaba LICENSE dentro del ZIP publicado
+changelog=0.8.6 (2026-08-19) — Fix: 3 hallazgos CRÍTICOS de Bandit bloqueaban el scan de seguridad
+  * BUG REPORTADO al subir v0.8.5: plugins.qgis.org bloqueó la
+    publicación por 3 try/except/pass (error_utils.py, plugin.py,
+    project_loader.py) — su scanner los trata como CRÍTICOS, a
+    diferencia de bandit local que los marca solo LOW. Ya no eran
+    aceptables como estaban.
+  * Fix real, no solo silenciar el scan: los 3 ahora loggean el error
+    (log_full_error, o print a stderr en el caso de error_utils.py que
+    es el propio fallback de logging y no puede llamarse a sí mismo)
+    en vez de tragárselo en silencio. Mismo comportamiento best-effort
+    de antes — ninguna excepción ahí debe crashear el flujo — pero ya
+    no desaparece sin rastro para debugging.
+  * bandit: 0 issues (antes 3 LOW). ruff: 0 issues. 164/164 tests
+    verdes.
+
+ 0.8.5 (2026-08-19) — Fix: faltaba LICENSE dentro del ZIP publicado
   * BUG REPORTADO al subir el ZIP: "Cannot find LICENSE in the plugin
     package". El LICENSE (GPL-3.0) vive en la raíz del repo, pero
     build.py/build.sh solo empaquetaban pudumaps_qgis/ — nunca lo
