@@ -486,8 +486,11 @@ def _zoom_to_group(group) -> None:
             combined.scale(1.1)
             canvas.setExtent(combined)
             canvas.refresh()
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        # Best-effort: una capa rara (extent inválido, canvas no
+        # disponible) no debe abortar el pull completo, pero tampoco
+        # queremos que quede invisible sin rastro para debugging.
+        log_full_error("project_loader._zoom_to_group", e)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

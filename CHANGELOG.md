@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.6] — 2026-08-19
+
+### Fixed
+- **3 hallazgos CRÍTICOS de Bandit bloqueaban el scan de seguridad de
+  plugins.qgis.org** (`error_utils.py`, `plugin.py`,
+  `project_loader.py`) — su scanner trata `try/except/pass` como
+  crítico, a diferencia de `bandit` local (LOW). Fix real: los 3 ahora
+  loggean el error en vez de tragárselo en silencio, mismo
+  comportamiento best-effort de antes. `bandit`: 0 issues (antes 3).
+
 ## [0.8.5] — 2026-08-19
 
 ### Fixed
