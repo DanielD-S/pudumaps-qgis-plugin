@@ -171,7 +171,9 @@ class PudumapsPlugin:
             client = PudumapsClient(api_key=creds.api_key, base_url=creds.base_url)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(
-                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {safe_error_message(e)}"
+                self.iface.mainWindow(),
+                "Pudumaps",
+                f"No se pudo crear el cliente: {safe_error_message(e)}",
             )
             return
 
@@ -227,7 +229,9 @@ class PudumapsPlugin:
             client = PudumapsClient(api_key=creds.api_key, base_url=creds.base_url)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(
-                self.iface.mainWindow(), "Pudumaps", f"No se pudo crear el cliente: {safe_error_message(e)}"
+                self.iface.mainWindow(),
+                "Pudumaps",
+                f"No se pudo crear el cliente: {safe_error_message(e)}",
             )
             return
 
