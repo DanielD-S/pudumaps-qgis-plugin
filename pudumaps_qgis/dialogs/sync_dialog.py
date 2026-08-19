@@ -4,7 +4,6 @@ lets the user confirm or override the suggested action per layer."""
 from __future__ import annotations
 
 from qgis.core import QgsProject, QgsVectorLayer
-from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -272,7 +271,9 @@ class SyncDialog(QDialog):
         result = SyncResult()
         for idx, (d, action) in enumerate(actionable):
             self.progress.setValue(idx)
-            self._set_status(f"[{idx + 1}/{len(actionable)}] {d.layer_name} → {action.value}", ok=None)
+            self._set_status(
+                f"[{idx + 1}/{len(actionable)}] {d.layer_name} → {action.value}", ok=None
+            )
             QApplication.processEvents()
             try:
                 self._dispatch(d, action, result)

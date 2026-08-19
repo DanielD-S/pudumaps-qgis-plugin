@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.2
+version=0.8.3
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,13 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.2 (2026-08-18) — El acceso a la API ya no requiere plan Pro
+changelog=0.8.3 (2026-08-19) — Limpieza de código previa a publicar en plugins.qgis.org
+  * 2 imports sin usar (Qt en sync_dialog.py, QWidget en ui_helpers.py),
+    2 f-strings sin placeholder y 3 líneas >100 cols. Sin cambios de
+    comportamiento. Verificado con bandit (0 issues medium/high) y
+    ruff --select E,F,W (0 issues) antes de subir a plugins.qgis.org.
+
+ 0.8.2 (2026-08-18) — El acceso a la API ya no requiere plan Pro
   * Pudumaps abrió acceso a la API (y por lo tanto al plugin) a todos
     los planes, incluido Free — antes requería Pro o superior. Se
     actualiza el texto de metadata.txt y README.md, que seguían

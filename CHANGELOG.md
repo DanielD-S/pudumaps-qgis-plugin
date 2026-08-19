@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.3] — 2026-08-19
+
+### Changed
+- Limpieza de código previa a publicar en plugins.qgis.org: 2 imports
+  sin usar, 2 f-strings sin placeholder, 3 líneas >100 columnas. Sin
+  cambios de comportamiento — verificado con `bandit` (0 issues
+  medium/high) y `ruff --select E,F,W` (0 issues).
+
 ## [0.8.2] — 2026-08-18
 
 ### Changed

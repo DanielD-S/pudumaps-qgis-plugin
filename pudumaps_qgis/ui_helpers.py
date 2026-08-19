@@ -6,7 +6,7 @@ from pathlib import Path
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap
-from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from qgis.PyQt.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout
 
 PLUGIN_DIR = Path(__file__).resolve().parent
 LOGO_PNG = str(PLUGIN_DIR / "icons" / "pudumaps-logo.png")

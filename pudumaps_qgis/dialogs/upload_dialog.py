@@ -114,13 +114,13 @@ class UploadLayerDialog(QDialog):
         crs = self.layer.crs().authid() or "desconocido"
         note = ""
         if crs != "EPSG:4326":
-            note = f" · se reproyectará a EPSG:4326"
+            note = " · se reproyectará a EPSG:4326"
         summary = (
             f"{count:,} feature(s) · CRS {crs}{note}"
         )
         if self.existing_remote_id:
             summary += (
-                f"\n⟲ Esta capa vino de Pudumaps — se actualizará en el "
+                "\n⟲ Esta capa vino de Pudumaps — se actualizará en el "
                 "proyecto original."
             )
         self.summary_label.setText(summary)
