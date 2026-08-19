@@ -66,6 +66,14 @@ def build() -> Path:
             arcname = file.relative_to(ROOT)
             zf.write(file, arcname)
 
+        # plugins.qgis.org exige un LICENSE dentro del paquete (junto a
+        # metadata.txt) — el nuestro vive en la raíz del repo, no en
+        # pudumaps_qgis/, así que el loop de arriba nunca lo agarra.
+        license_file = ROOT / "LICENSE"
+        if not license_file.exists():
+            raise RuntimeError("LICENSE no encontrado en la raíz del repo")
+        zf.write(license_file, SRC_DIR.name + "/LICENSE")
+
     return zip_path
 
 

@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.5] — 2026-08-19
+
+### Fixed
+- **Faltaba `LICENSE` dentro del ZIP publicado** — plugins.qgis.org lo
+  exige junto a `metadata.txt`. El `LICENSE` (GPL-3.0) vive en la raíz
+  del repo; `build.py`/`build.sh` solo empaquetaban `pudumaps_qgis/` y
+  nunca lo incluían. Ambos scripts ahora lo copian dentro del paquete
+  al construir el ZIP.
+
 ## [0.8.4] — 2026-08-19
 
 ### Fixed
