@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.3
+version=0.8.4
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,16 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.3 (2026-08-19) — Limpieza de código previa a publicar en plugins.qgis.org
+changelog=0.8.4 (2026-08-19) — Fix: metadata.txt rompía el parser INI de plugins.qgis.org
+  * BUG REPORTADO al subir el ZIP: el changelog de v0.7.6 tenía un
+    símbolo porcentaje suelto (nubosidad, sin escapar). metadata.txt
+    se lee con configparser (formato INI), que trata ese símbolo como
+    carácter especial de interpolación — uno solo sin duplicar rompe
+    el parseo completo del archivo. Ya escapado correctamente.
+    Verificado simulando el mismo parser (ConfigParser + resolución de
+    cada valor) antes de subir: parsea limpio.
+
+ 0.8.3 (2026-08-19) — Limpieza de código previa a publicar en plugins.qgis.org
   * 2 imports sin usar (Qt en sync_dialog.py, QWidget en ui_helpers.py),
     2 f-strings sin placeholder y 3 líneas >100 cols. Sin cambios de
     comportamiento. Verificado con bandit (0 issues medium/high) y
@@ -153,7 +162,7 @@ changelog=0.8.3 (2026-08-19) — Limpieza de código previa a publicar en plugin
     EPSG:4326) + rango de fechas + cloud cover máximo. Resultado
     GeoTIFF cargado como capa raster.
   * Diálogo de configuración con extent del canvas pre-seleccionado,
-    QDateEdit con calendarios, spinbox de nubosidad %.
+    QDateEdit con calendarios, spinbox de nubosidad %%.
   * Validación defensiva: rechaza bbox >5° (descargas masivas),
     fechas invertidas, rango pre-Sentinel-2 (antes 2015-06-23),
     cloud_max fuera de 0-100.

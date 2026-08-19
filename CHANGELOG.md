@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.4] — 2026-08-19
+
+### Fixed
+- **`metadata.txt` rompía el parser INI de plugins.qgis.org al subir el
+  ZIP**: `'%' must be followed by '%' or '(', found: '%.'`. El
+  changelog de v0.7.6 tenía un `%` suelto ("nubosidad %.") sin escapar
+  — `metadata.txt` se lee con `configparser` (formato INI), que trata
+  `%` como carácter especial de interpolación. Escapado a `%%`.
+  Verificado simulando el mismo parser (`ConfigParser` + resolución de
+  cada valor) antes de subir: parsea limpio.
+
 ## [0.8.3] — 2026-08-19
 
 ### Changed
