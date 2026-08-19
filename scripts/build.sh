@@ -24,6 +24,13 @@ mkdir -p "$DIST_DIR"
 rm -f "$ZIP_PATH"
 
 cd "$ROOT_DIR"
+
+# plugins.qgis.org exige un LICENSE dentro del paquete (junto a
+# metadata.txt) — el nuestro vive en la raíz del repo, no en
+# pudumaps_qgis/. Copia temporal solo para el zip, se borra al salir.
+cp LICENSE pudumaps_qgis/LICENSE
+trap 'rm -f pudumaps_qgis/LICENSE' EXIT
+
 zip -r "$ZIP_PATH" pudumaps_qgis \
   -x "*/__pycache__/*" \
   -x "*.pyc" \

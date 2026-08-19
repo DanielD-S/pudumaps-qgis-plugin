@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.4
+version=0.8.5
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,14 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.4 (2026-08-19) — Fix: metadata.txt rompía el parser INI de plugins.qgis.org
+changelog=0.8.5 (2026-08-19) — Fix: faltaba LICENSE dentro del ZIP publicado
+  * BUG REPORTADO al subir el ZIP: "Cannot find LICENSE in the plugin
+    package". El LICENSE (GPL-3.0) vive en la raíz del repo, pero
+    build.py/build.sh solo empaquetaban pudumaps_qgis/ — nunca lo
+    incluían. Ahora ambos scripts copian LICENSE dentro del paquete
+    (junto a metadata.txt) al construir el ZIP.
+
+ 0.8.4 (2026-08-19) — Fix: metadata.txt rompía el parser INI de plugins.qgis.org
   * BUG REPORTADO al subir el ZIP: el changelog de v0.7.6 tenía un
     símbolo porcentaje suelto (nubosidad, sin escapar). metadata.txt
     se lee con configparser (formato INI), que trata ese símbolo como
