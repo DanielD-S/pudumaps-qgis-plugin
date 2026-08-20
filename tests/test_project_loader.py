@@ -52,9 +52,12 @@ from pudumaps_qgis.project_loader import (  # noqa: E402
     UnsupportedLayerError,
     _field_type_for,
     _safe_field_name,
+    build_arcgis_feature_uri,
     external_layer_to_qgis,
+    has_arcgis_layer_index,
     infer_geometry_type,
     parse_wms_external_url,
+    resolve_arcgis_feature_url,
 )
 
 
@@ -188,12 +191,79 @@ def test_external_layer_to_qgis_arcgis_map_uses_rest_url_directly(monkeypatch):
     assert layer.uri == url
 
 
+# ── arcgis_feature: forma del URI ─────────────────────────────────────────
+#
+# Bug reportado 2026-08-20: 3 capas arcgis_feature fallaban con
+# external_layer_invalid aunque los servicios respondían 200 por HTTP.
+# Dos causas independientes, ambas verificadas contra QGIS 3.40.9 real:
+#   1. El proveedor arcgisfeatureserver rechaza una URL pelada; necesita
+#      pares clave=valor con crs y url.
+#   2. Rechaza un /FeatureServer sin id de capa. Pudumaps guarda el
+#      external_url unas veces con id y otras sin él.
+
+
+def test_has_arcgis_layer_index_detecta_el_id_final():
+    base = "https://example.com/arcgis/rest/services/Foo/FeatureServer"
+    assert has_arcgis_layer_index(f"{base}/0")
+    assert has_arcgis_layer_index(f"{base}/2")
+    assert has_arcgis_layer_index(f"{base}/12/")
+    assert not has_arcgis_layer_index(base)
+    assert not has_arcgis_layer_index(f"{base}/")
+    assert not has_arcgis_layer_index("")
+
+
+def test_resolve_no_toca_una_url_que_ya_trae_id():
+    """Con id no debe salir a la red: el fetcher explota si lo llaman."""
+
+    def boom(_url):
+        raise AssertionError("no debería consultar metadata si ya hay id")
+
+    url = "https://example.com/arcgis/rest/services/Foo/FeatureServer/2"
+    assert resolve_arcgis_feature_url(url, fetch_json=boom) == url
+
+
+def test_resolve_toma_la_primera_capa_del_servicio():
+    base = "https://example.com/arcgis/rest/services/Foo/FeatureServer"
+    meta = {"layers": [{"id": 3, "name": "Algo"}, {"id": 4, "name": "Otro"}]}
+    assert resolve_arcgis_feature_url(base, fetch_json=lambda _u: meta) == f"{base}/3"
+
+
+def test_resolve_cae_a_cero_si_la_metadata_falla():
+    """Servicio caído o JSON raro no debe romper la carga: se asume capa 0."""
+    base = "https://example.com/arcgis/rest/services/Foo/FeatureServer"
+
+    def boom(_url):
+        raise RuntimeError("503")
+
+    assert resolve_arcgis_feature_url(base, fetch_json=boom) == f"{base}/0"
+
+
+def test_resolve_cae_a_cero_si_el_servicio_no_declara_capas():
+    base = "https://example.com/arcgis/rest/services/Foo/FeatureServer"
+    assert resolve_arcgis_feature_url(base, fetch_json=lambda _u: {}) == f"{base}/0"
+
+
+def test_resolve_normaliza_la_barra_final():
+    base = "https://example.com/arcgis/rest/services/Foo/FeatureServer"
+    meta = {"layers": [{"id": 0}]}
+    assert resolve_arcgis_feature_url(f"{base}/", fetch_json=lambda _u: meta) == f"{base}/0"
+
+
+def test_build_uri_usa_pares_clave_valor_no_url_pelada():
+    """La URL pelada es justamente lo que el proveedor rechazaba."""
+    url = "https://example.com/arcgis/rest/services/Foo/FeatureServer/2"
+    uri = build_arcgis_feature_uri(url, fetch_json=lambda _u: {})
+    assert uri == f"crs='EPSG:4326' url='{url}'"
+    assert uri != url
+
+
 def test_external_layer_to_qgis_arcgis_feature_uses_vector_provider(monkeypatch):
     monkeypatch.setattr(project_loader, "QgsVectorLayer", _FakeQgisLayer)
     url = "https://example.com/arcgis/rest/services/Foo/FeatureServer/0"
     layer = external_layer_to_qgis("arcgis_feature", url, "Foo")
     assert layer.provider == "arcgisfeatureserver"
-    assert layer.uri == url
+    # Antes se pasaba `url` tal cual y el proveedor lo rechazaba en silencio.
+    assert layer.uri == f"crs='EPSG:4326' url='{url}'"
 
 
 def test_external_layer_to_qgis_weather_is_unsupported_not_invalid():
