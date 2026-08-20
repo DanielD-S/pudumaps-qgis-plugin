@@ -42,7 +42,7 @@ class SettingsDialog(QDialog):
 
         # Form
         self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.Password)
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_edit.setPlaceholderText("pdmp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 
         self.base_url_edit = QLineEdit()
@@ -50,7 +50,7 @@ class SettingsDialog(QDialog):
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.test_btn = QPushButton("Probar conexión")
         self.test_btn.clicked.connect(self._test_connection)
@@ -59,7 +59,7 @@ class SettingsDialog(QDialog):
         self.clear_btn.clicked.connect(self._clear)
 
         self.buttons = QDialogButtonBox(
-            QDialogButtonBox.Save | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.accepted.connect(self._save_and_close)
         self.buttons.rejected.connect(self.reject)
@@ -202,19 +202,19 @@ class SettingsDialog(QDialog):
             "Opciones → Autenticación, configura un master password, "
             "y vuelve a guardar.\n\n"
             "¿Continuar guardando sin cifrar?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
         )
-        return reply == QMessageBox.Yes
+        return reply == QMessageBox.StandardButton.Yes
 
     def _clear(self) -> None:
         confirmed = QMessageBox.question(
             self,
             "Pudumaps",
             "¿Borrar las credenciales guardadas?",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if confirmed != QMessageBox.Yes:
+        if confirmed != QMessageBox.StandardButton.Yes:
             return
         auth_cleared = clear_credentials()
         self.api_key_edit.clear()

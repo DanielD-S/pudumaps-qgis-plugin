@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.7] — 2026-08-19
+
+### Fixed
+- **48 issues de compatibilidad Qt6** detectados por el check de plugins.qgis.org
+  al subir v0.8.6 (security scan pasó, Qt6 Check no) — enums de PyQt5 sin
+  calificar (`QMessageBox.Yes` → `QMessageBox.StandardButton.Yes`, etc.) y
+  4 usos de `.exec_()` (removido en PyQt6). Corregidos en 8 archivos:
+  `error_utils.py`, `plugin.py`, `ui_helpers.py`,
+  `dialogs/{upload,settings,sync,projects}_dialog.py`. Sigue siendo válido
+  en PyQt5/Qt5 — la forma calificada nunca fue exclusiva de Qt6.
+- **Nota:** no se pudo probar contra un runtime Qt6/PyQt6 real (sin QGIS
+  instalado en el entorno de desarrollo) — verificado por sintaxis, bandit,
+  ruff y 164 tests, pero es el patrón estándar de migración PyQt5→PyQt6,
+  no smoke-testeado end-to-end en Qt6.
+
 ## [0.8.6] — 2026-08-19
 
 ### Fixed

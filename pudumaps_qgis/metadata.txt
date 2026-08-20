@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.6
+version=0.8.7
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,22 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.6 (2026-08-19) — Fix: 3 hallazgos CRÍTICOS de Bandit bloqueaban el scan de seguridad
+changelog=0.8.7 (2026-08-19) — Fix: 48 issues de compatibilidad Qt6 detectados por plugins.qgis.org
+  * BUG REPORTADO al subir v0.8.6: security scan pasó, pero el check de
+    compatibilidad Qt6 marcó 48 issues en 8 archivos — enums de PyQt5
+    sin calificar (ej. QMessageBox.Yes en vez de
+    QMessageBox.StandardButton.Yes) y 4 usos de .exec_() (removido en
+    PyQt6, solo queda .exec()).
+  * Fix: los 48 corregidos a la forma calificada/PyQt6-compatible.
+    Sigue funcionando igual en QGIS con Qt5 — la forma calificada
+    siempre fue válida en PyQt5 también, no es exclusiva de Qt6.
+  * NOTA: no se pudo probar contra un runtime Qt6/PyQt6 real (no hay
+    QGIS instalado en el entorno de desarrollo) — verificado sintaxis
+    + bandit + ruff + 164 tests, pero el fix en sí es el patrón
+    estándar documentado de migración PyQt5→PyQt6, no smoke-testeado
+    end-to-end en Qt6.
+
+ 0.8.6 (2026-08-19) — Fix: 3 hallazgos CRÍTICOS de Bandit bloqueaban el scan de seguridad
   * BUG REPORTADO al subir v0.8.5: plugins.qgis.org bloqueó la
     publicación por 3 try/except/pass (error_utils.py, plugin.py,
     project_loader.py) — su scanner los trata como CRÍTICOS, a

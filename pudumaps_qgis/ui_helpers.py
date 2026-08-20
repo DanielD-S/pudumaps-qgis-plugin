@@ -18,7 +18,7 @@ def build_header(title: str, subtitle: str = "", logo_height: int = 48) -> QFram
     for consistent branding.
     """
     frame = QFrame()
-    frame.setFrameShape(QFrame.NoFrame)
+    frame.setFrameShape(QFrame.Shape.NoFrame)
     frame.setContentsMargins(0, 0, 0, 0)
 
     hbox = QHBoxLayout(frame)
@@ -28,10 +28,10 @@ def build_header(title: str, subtitle: str = "", logo_height: int = 48) -> QFram
     logo = QLabel()
     pm = QPixmap(LOGO_PNG)
     if not pm.isNull():
-        pm = pm.scaledToHeight(logo_height, Qt.SmoothTransformation)
+        pm = pm.scaledToHeight(logo_height, Qt.TransformationMode.SmoothTransformation)
         logo.setPixmap(pm)
     logo.setFixedHeight(logo_height)
-    hbox.addWidget(logo, 0, Qt.AlignTop)
+    hbox.addWidget(logo, 0, Qt.AlignmentFlag.AlignTop)
 
     text_col = QVBoxLayout()
     text_col.setSpacing(0)
@@ -56,8 +56,8 @@ def build_header(title: str, subtitle: str = "", logo_height: int = 48) -> QFram
 def separator() -> QFrame:
     """Thin horizontal separator to put between header and content."""
     line = QFrame()
-    line.setFrameShape(QFrame.HLine)
-    line.setFrameShadow(QFrame.Sunken)
+    line.setFrameShape(QFrame.Shape.HLine)
+    line.setFrameShadow(QFrame.Shadow.Sunken)
     line.setStyleSheet("color: #e5e7eb;")
     return line
 
@@ -72,7 +72,9 @@ def toast_success(iface, message: str, title: str = "Pudumaps", duration: int = 
         return
     from qgis.core import Qgis
 
-    iface.messageBar().pushMessage(title, message, level=Qgis.Success, duration=duration)
+    iface.messageBar().pushMessage(
+        title, message, level=Qgis.MessageLevel.Success, duration=duration
+    )
 
 
 def toast_info(iface, message: str, title: str = "Pudumaps", duration: int = 4) -> None:
@@ -80,7 +82,9 @@ def toast_info(iface, message: str, title: str = "Pudumaps", duration: int = 4) 
         return
     from qgis.core import Qgis
 
-    iface.messageBar().pushMessage(title, message, level=Qgis.Info, duration=duration)
+    iface.messageBar().pushMessage(
+        title, message, level=Qgis.MessageLevel.Info, duration=duration
+    )
 
 
 def toast_warning(iface, message: str, title: str = "Pudumaps", duration: int = 6) -> None:
@@ -88,7 +92,9 @@ def toast_warning(iface, message: str, title: str = "Pudumaps", duration: int = 
         return
     from qgis.core import Qgis
 
-    iface.messageBar().pushMessage(title, message, level=Qgis.Warning, duration=duration)
+    iface.messageBar().pushMessage(
+        title, message, level=Qgis.MessageLevel.Warning, duration=duration
+    )
 
 
 def toast_error(iface, message: str, title: str = "Pudumaps", duration: int = 8) -> None:
@@ -96,4 +102,6 @@ def toast_error(iface, message: str, title: str = "Pudumaps", duration: int = 8)
         return
     from qgis.core import Qgis
 
-    iface.messageBar().pushMessage(title, message, level=Qgis.Critical, duration=duration)
+    iface.messageBar().pushMessage(
+        title, message, level=Qgis.MessageLevel.Critical, duration=duration
+    )

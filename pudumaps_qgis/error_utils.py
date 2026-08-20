@@ -68,7 +68,7 @@ def log_full_error(context: str, e: object) -> None:
         from qgis.core import Qgis, QgsMessageLog
 
         QgsMessageLog.logMessage(
-            f"{context}: {e!r}", "Pudumaps", level=Qgis.Warning
+            f"{context}: {e!r}", "Pudumaps", level=Qgis.MessageLevel.Warning
         )
     except Exception as log_error:  # noqa: BLE001
         # QgsMessageLog no disponible (tests fuera de QGIS, import falla,

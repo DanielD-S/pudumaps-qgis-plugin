@@ -73,12 +73,12 @@ class SyncDialog(QDialog):
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["Capa", "Estado", "Acción", "Detalle"])
-        self.table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header = self.table.horizontalHeader()
+        for col in (0, 1, 2):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -89,11 +89,11 @@ class SyncDialog(QDialog):
 
         self.buttons = QDialogButtonBox()
         self.sync_btn = self.buttons.addButton(
-            "Aplicar", QDialogButtonBox.AcceptRole
+            "Aplicar", QDialogButtonBox.ButtonRole.AcceptRole
         )
         self.sync_btn.setEnabled(False)
         self.sync_btn.clicked.connect(self._apply)
-        self.buttons.addButton(QDialogButtonBox.Close).clicked.connect(self.reject)
+        self.buttons.addButton(QDialogButtonBox.StandardButton.Close).clicked.connect(self.reject)
 
         layout = QVBoxLayout()
         layout.addWidget(
