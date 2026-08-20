@@ -77,7 +77,7 @@ class SettingsDialog(QDialog):
         hint = QLabel(
             "Obtén tu API key desde el Dashboard de Pudumaps:\n"
             "Configuración → API → Nueva key.\n"
-            "Requiere plan Pro o superior."
+            "Disponible en todos los planes, incluido el gratuito."
         )
         hint.setStyleSheet("color: #888; font-size: 11px;")
         hint.setWordWrap(True)

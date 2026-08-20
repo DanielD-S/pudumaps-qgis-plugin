@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.1] — 2026-08-20
+
+### Fixed
+- **El diálogo de Configuración decía que la API requiere plan Pro.** El texto
+  de ayuda en `dialogs/settings_dialog.py` seguía diciendo "Requiere plan Pro o
+  superior". El acceso a la API se abrió a todos los planes, incluido el
+  gratuito, el 2026-08-19 (DanielD-S/pudumaps#249). La v0.8.2 corrigió
+  `metadata.txt` y el `README.md`, pero se le escapó este string — que es el
+  único de los tres que el usuario ve de verdad, al abrir Complementos →
+  Pudumaps → Configuración. Un usuario del plan gratuito leía que necesitaba
+  pagar para usar el plugin.
+
 ## [0.9.0] — 2026-08-20
 
 ### Changed
