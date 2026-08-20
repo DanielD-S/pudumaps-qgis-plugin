@@ -2,11 +2,14 @@
 
 Official QGIS plugin for [Pudumaps](https://pudumaps.cl) — the Chilean geospatial cloud platform. Browse, pull, push and sync projects and layers between QGIS and your Pudumaps account.
 
-> **Status:** experimental (v0.8.0) — not yet published to plugins.qgis.org
+> **Status:** beta. Submitted to plugins.qgis.org and awaiting approval — until it is
+> approved, install the ZIP from the [Releases page](https://github.com/DanielD-S/pudumaps-qgis-plugin/releases)
+> or from <https://pudumaps.cl/qgis>.
 
 ## Features
 
-- Settings dialog with encrypted API key storage via `QgsAuthManager`
+- Settings dialog with encrypted API key storage via `QgsAuthManager` — paste the key
+  and you are done; the API URL only shows up under an "Advanced" toggle
 - Open a Pudumaps project as QGIS layers (pull), with an automatic layer group per project
 - Upload a QGIS vector layer to a Pudumaps project (push), from the menu, toolbar or layer-panel context menu
 - Bidirectional sync with per-layer conflict detection (unchanged / local-only / remote-only / conflict / new / deleted)
@@ -15,13 +18,17 @@ Official QGIS plugin for [Pudumaps](https://pudumaps.cl) — the Chilean geospat
 ## Install
 
 1. Download the latest ZIP from the [Releases page](https://github.com/DanielD-S/pudumaps-qgis-plugin/releases)
+   or from <https://pudumaps.cl/qgis>
 2. In QGIS: **Plugins → Manage and Install Plugins → Install from ZIP**
 3. Select the downloaded ZIP
 4. Open **Pudumaps → Configuración** from the plugin menu and paste your API key
 
+That is the whole setup — the API URL is preconfigured and there is nothing else to fill in.
+
 ## Get an API key
 
-1. Sign up / log in at [pudumaps.cl](https://pudumaps.cl) — free plan works
+1. Sign up / log in at [pudumaps.cl](https://pudumaps.cl). API access is included in
+   **every plan, the free one included** — nothing here is behind a paywall
 2. Go to **Configuración → API → Nueva key**
 3. Copy the key (shown only once) and paste it into the plugin settings
 
