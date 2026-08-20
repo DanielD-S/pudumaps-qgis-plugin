@@ -25,6 +25,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   detect-secrets. Se dejan sin tocar a propósito para que el ZIP siga siendo
   byte-idéntico al que ya pasó 5/5 checks.
 
+- **`homepage` pasa de `https://pudumaps.cl` a `https://pudumaps.cl/qgis`.** La
+  guía de aprobación de plugins.qgis.org pide que el enlace de homepage lleve a
+  una página que describa la funcionalidad del plugin, y dice explícitamente que
+  cualquier otro enlace es causa de rechazo. La raíz de pudumaps.cl es la
+  pantalla de login; `/qgis` es la página que describe el plugin, sus pasos de
+  instalación y la descarga. `tracker` y `repository` ya cumplían.
+
 ### Notas de alcance para la primera versión estable
 - **Verificado end-to-end contra datos reales:** pull de proyectos y capas,
   incluidas capas externas WMS/ArcGIS del catálogo Capas Oficiales de Chile
@@ -37,6 +44,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   visible sin activar experimentales.
 - **No smoke-testeado en un runtime Qt6/PyQt6 real** (no hay QGIS instalado
   en el entorno de desarrollo); arrastra la misma nota que 0.8.7.
+- **La próxima versión NO puede ser 0.10.0.** El feed `plugins.xml` elige cuál
+  es la "última" versión por comparación de *string*, no numérica (documentado
+  en la FAQ de plugins.qgis.org). `"0.10.0" < "0.9.0"` porque `1 < 9`, así que
+  publicar 0.10.0 dejaría a QGIS ofreciendo 0.9.0 como la más nueva. Después de
+  0.9.0 hay que ir a 0.9.x o saltar a 1.0.0.
 
 ## [0.8.7] — 2026-08-19
 
