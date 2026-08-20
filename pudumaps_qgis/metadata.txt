@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.9.2
+version=0.9.3
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -23,7 +23,18 @@ hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.9.2 (2026-08-20) — La URL de la API pasa a pudumaps.cl y el campo se esconde
+changelog=0.9.3 (2026-08-20) — Fix: las capas de ArcGIS FeatureServer no cargaban
+  * Las capas del catalogo Capas Oficiales servidas por ArcGIS
+    FeatureServer (SERNAGEOMIN, SENAPRED y otras) fallaban al abrir un
+    proyecto, con el error external_layer_invalid, aunque los servicios
+    respondian normalmente. Se veian bien en la web de Pudumaps.
+  * Dos causas, las dos corregidas: el proveedor de QGIS necesita el
+    origen de datos como pares clave=valor y no como una URL suelta, y
+    ademas exige el numero de capa del FeatureServer, que en algunas
+    capas no venia. Ahora se consulta al servicio cual es.
+  * Las capas de tipo MapServer nunca estuvieron afectadas.
+
+ 0.9.2 (2026-08-20) — La URL de la API pasa a pudumaps.cl y el campo se esconde
   * La URL base por defecto deja de ser el endpoint crudo de Supabase y
     pasa a https://pudumaps.cl/api, que hace de proxy hacia la misma
     Edge Function. El endpoint viejo sigue funcionando.

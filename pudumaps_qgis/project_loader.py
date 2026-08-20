@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass
 from typing import Any
@@ -79,6 +80,64 @@ class UnsupportedLayerError(ValueError):
 # geojson local (ver WMSLayerPanel.persistExternalLayer en la app principal:
 # geojson=null, layer_type + external_url describen la fuente real).
 EXTERNAL_LAYER_TYPES = frozenset({"wms", "arcgis_map", "arcgis_feature", "weather"})
+
+# Timeout del GET de metadata del FeatureServer. Corto a propósito: es una
+# llamada de conveniencia y si falla igual se cae al id 0.
+ARCGIS_META_TIMEOUT = 8
+
+
+def has_arcgis_layer_index(url: str) -> bool:
+    """True si la URL ya apunta a una capa concreta (.../FeatureServer/2)."""
+    return bool(re.search(r"/\d+/*$", url or ""))
+
+
+def resolve_arcgis_feature_url(url: str, *, fetch_json=None) -> str:
+    """Asegura que la URL apunte a una capa concreta del FeatureServer.
+
+    El proveedor `arcgisfeatureserver` de QGIS NO carga un `/FeatureServer`
+    pelado: necesita el id de capa. Pudumaps guarda el `external_url` unas
+    veces con id (…/FeatureServer/2) y otras sin él (…/FeatureServer), según
+    cómo se agregó la capa, así que acá se normaliza.
+
+    Si falta el id se le pregunta al servicio por su primera capa. Si esa
+    consulta falla (red, servicio caído, JSON raro) se cae al id 0, que es
+    el caso abrumadoramente común.
+    """
+    base = (url or "").rstrip("/")
+    if not base:
+        return base
+    if has_arcgis_layer_index(base):
+        return base
+
+    layer_id = 0
+    try:
+        meta = (fetch_json or _fetch_arcgis_json)(f"{base}?f=json")
+        layers = meta.get("layers") or []
+        if layers and isinstance(layers[0], dict) and layers[0].get("id") is not None:
+            layer_id = int(layers[0]["id"])
+    except Exception as e:  # noqa: BLE001 — best effort, seguimos con id 0
+        log_full_error(f"metadata de FeatureServer {base} (se asume la capa 0)", e)
+    return f"{base}/{layer_id}"
+
+
+def build_arcgis_feature_uri(url: str, *, fetch_json=None) -> str:
+    """URI del proveedor arcgisfeatureserver.
+
+    Una URL pelada NO sirve como fuente de datos —el proveedor la rechaza sin
+    mensaje de error—; hay que pasarle `crs` y `url` como pares clave=valor,
+    igual que en la rama WMS de más arriba.
+    """
+    resolved = resolve_arcgis_feature_url(url, fetch_json=fetch_json)
+    return f"crs='EPSG:4326' url='{resolved}'"
+
+
+def _fetch_arcgis_json(url: str) -> dict:
+    import requests
+
+    resp = requests.get(url, timeout=ARCGIS_META_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()
+
 
 
 def parse_wms_external_url(external_url: str) -> tuple[str, str]:
@@ -137,7 +196,10 @@ def external_layer_to_qgis(layer_type: str, external_url: str, name: str) -> Qgs
 
     if layer_type == "arcgis_feature":
         # Proveedor nativo QGIS para ArcGIS REST FeatureServer (vectorial).
-        return QgsVectorLayer(external_url, name, "arcgisfeatureserver")
+        # OJO: no acepta la URL pelada, ver build_arcgis_feature_uri.
+        return QgsVectorLayer(
+            build_arcgis_feature_uri(external_url), name, "arcgisfeatureserver"
+        )
 
     raise UnsupportedLayerError(f"Tipo de capa desconocido: {layer_type!r}")
 

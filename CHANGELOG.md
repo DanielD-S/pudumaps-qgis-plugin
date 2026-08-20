@@ -3,6 +3,42 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.3] — 2026-08-20
+
+### Fixed
+- **Las capas `arcgis_feature` no cargaban.** Reportado probando la 0.9.2: al
+  abrir un proyecto, 3 de 4 capas fallaban con `external_layer_invalid` pese a
+  que los servicios respondían 200 por HTTP y se veían bien en la web de
+  Pudumaps. Dos causas independientes, las dos verificadas contra QGIS 3.40.9
+  real antes y después del fix:
+
+  1. **El proveedor `arcgisfeatureserver` rechaza una URL pelada.** Necesita el
+     origen de datos como pares clave=valor: `crs='EPSG:4326' url='…'`, igual
+     que la rama WMS de la misma función ya hacía. Lo peor es que falla
+     *en silencio*: `layer.error().summary()` viene vacío, así que el plugin
+     solo podía reportar un genérico "no se pudo cargar".
+  2. **Exige el id de capa del FeatureServer.** Pudumaps guarda el
+     `external_url` unas veces con id (`…/FeatureServer/2`) y otras sin él
+     (`…/FeatureServer`), según cómo se agregó la capa; la web funciona igual
+     porque compone `serviceUrl` + `layerId` por separado en cada consulta.
+     `resolve_arcgis_feature_url()` ahora consulta la metadata del servicio y
+     usa su primera capa, cayendo al id 0 si esa consulta falla.
+
+  Verificado end-to-end con las URLs exactas del reporte: SERNAGEOMIN carga
+  102.875 features y SENAPRED 8.535, ambas en EPSG:4326.
+
+- **`arcgis_map` no estaba afectado** — comprobado: el proveedor
+  `arcgismapserver` sí acepta la URL del servicio directamente, como decía el
+  comentario del código. No se tocó.
+
+### Added
+- 7 tests para `has_arcgis_layer_index`, `resolve_arcgis_feature_url` y
+  `build_arcgis_feature_uri`, con el fetcher de metadata inyectado para no
+  depender de la red. Cubren: URL con id (no debe consultar nada), sin id,
+  metadata caída, servicio sin capas declaradas y barra final. El test que
+  afirmaba `layer.uri == url` codificaba justamente el comportamiento con
+  bug — se corrigió.
+
 ## [0.9.2] — 2026-08-20
 
 ### Changed
