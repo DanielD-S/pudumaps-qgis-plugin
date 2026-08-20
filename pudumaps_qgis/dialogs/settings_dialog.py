@@ -18,7 +18,6 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QPushButton,
     QVBoxLayout,
-    QWidget,
 )
 
 from ..api_client import DEFAULT_BASE_URL, PudumapsClient, PudumapsError
@@ -58,12 +57,6 @@ class SettingsDialog(QDialog):
         self.advanced_check = QCheckBox("Avanzado: usar otra URL de la API")
         self.advanced_check.toggled.connect(self._toggle_advanced)
 
-        self.advanced_box = QWidget()
-        advanced_form = QFormLayout(self.advanced_box)
-        advanced_form.setContentsMargins(0, 0, 0, 0)
-        advanced_form.addRow("Base URL:", self.base_url_edit)
-        self.advanced_box.setVisible(False)
-
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -83,6 +76,18 @@ class SettingsDialog(QDialog):
         # Layout
         form = QFormLayout()
         form.addRow("API Key:", self.api_key_edit)
+        # Base URL comparte el QFormLayout con API Key a propósito: en layouts
+        # separados cada uno calcula su propia columna de etiquetas y los
+        # campos quedan desalineados entre sí ("API Key:" y "Base URL:" no
+        # miden lo mismo). Se oculta la fila entera —campo y etiqueta— en vez
+        # de moverla a otro contenedor.
+        # La casilla va DENTRO del formulario, entre las dos filas, para que
+        # al desplegarse el campo aparezca debajo del control que lo abre y no
+        # encima. addRow con un solo widget crea una fila que ocupa el ancho
+        # completo, sin etiqueta.
+        form.addRow(self.advanced_check)
+        form.addRow("Base URL:", self.base_url_edit)
+        self.base_url_label = form.labelForField(self.base_url_edit)
 
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.test_btn)
@@ -106,8 +111,6 @@ class SettingsDialog(QDialog):
         )
         main.addWidget(separator())
         main.addLayout(form)
-        main.addWidget(self.advanced_check)
-        main.addWidget(self.advanced_box)
         main.addLayout(btn_row)
         main.addWidget(self.status_label)
         main.addStretch()
@@ -115,13 +118,22 @@ class SettingsDialog(QDialog):
         main.addWidget(self.buttons)
         self.setLayout(main)
 
+        self._toggle_advanced(False)
         self._load_existing()
 
     # ── Logic ────────────────────────────────────────────────────────────
 
     def _toggle_advanced(self, checked: bool) -> None:
-        self.advanced_box.setVisible(checked)
-        self.adjustSize()
+        self.base_url_edit.setVisible(checked)
+        if self.base_url_label is not None:
+            self.base_url_label.setVisible(checked)
+        # adjustSize() por si solo NO encoge la ventana al replegar: Qt no baja
+        # de la altura ya alcanzada. Hay que reactivar el layout para que
+        # recalcule sizeHint sin la fila oculta y resetear el alto a mano.
+        lay = self.layout()
+        if lay is not None:
+            lay.activate()
+        self.resize(self.width(), self.sizeHint().height())
 
     def _load_existing(self) -> None:
         creds = load_credentials()
