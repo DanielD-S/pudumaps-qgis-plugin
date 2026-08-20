@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.0] — 2026-08-20
+
+### Changed
+- **El plugin deja de estar marcado como experimental** (`experimental=False`
+  en `metadata.txt`). Hasta 0.8.7 solo era visible en el Administrador de
+  Complementos de QGIS con "Mostrar también complementos experimentales"
+  activado, y plugins.qgis.org mostraba "This plugin has no public version
+  yet" con la tabla de versiones vacía.
+- **Sin cambios funcionales respecto de 0.8.7** — el ZIP publicado es
+  byte-idéntico al de 0.8.7 salvo `metadata.txt` (verificado comparando
+  SHA-256 archivo por archivo: 25 archivos, 1 distinto). El salto de versión
+  marca el cambio de estado de publicación, no una funcionalidad nueva.
+- Pre-flight: 164 tests en verde, `bandit` 0 issues sobre los 2442 LOC que se
+  publican, `metadata.txt` parsea con `configparser`, `LICENSE` presente en el
+  ZIP, 0 enums PyQt sin calificar. `ruff` reporta 11 findings cosméticos en el
+  código publicado — 2 son falsos positivos obligatorios de la API de QGIS
+  (`classFactory`, `initGui` deben ir en camelCase) y el resto son
+  modernizaciones de tipado que un `ruff` más nuevo empezó a sugerir; ninguno
+  lo mira el scanner de plugins.qgis.org, que corre flake8 + bandit +
+  detect-secrets. Se dejan sin tocar a propósito para que el ZIP siga siendo
+  byte-idéntico al que ya pasó 5/5 checks.
+
+### Notas de alcance para la primera versión estable
+- **Verificado end-to-end contra datos reales:** pull de proyectos y capas,
+  incluidas capas externas WMS/ArcGIS del catálogo Capas Oficiales de Chile
+  (SERNAGEOMIN, SENAPRED).
+- **Menos horas de vuelo:** push y sync bidireccional. El diseño es
+  conservador por defecto — `suggested_action_for(CONFLICT)` es `SKIP` y sin
+  `last_hash` previo dos lados distintos se clasifican como `CONFLICT`, no
+  como sobrescritura silenciosa (ver `sync_manager.py`). Aun así, es la
+  superficie con más riesgo de un reporte de bug ahora que el plugin es
+  visible sin activar experimentales.
+- **No smoke-testeado en un runtime Qt6/PyQt6 real** (no hay QGIS instalado
+  en el entorno de desarrollo); arrastra la misma nota que 0.8.7.
+
 ## [0.8.7] — 2026-08-19
 
 ### Fixed
