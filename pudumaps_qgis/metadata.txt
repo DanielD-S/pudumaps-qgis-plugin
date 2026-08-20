@@ -3,7 +3,7 @@ name=Pudumaps
 qgisMinimumVersion=3.22
 description=Connect QGIS to Pudumaps — Chilean geospatial cloud. Pull, push and sync projects and layers via the Pudumaps REST API.
 description[es]=Conecta QGIS con Pudumaps — plataforma geoespacial chilena. Descarga, sube y sincroniza proyectos y capas vía la API REST de Pudumaps.
-version=0.8.7
+version=0.9.0
 author=Pudumaps
 email=daniel.diazsantander@gmail.com
 
@@ -16,14 +16,28 @@ homepage=https://pudumaps.cl
 
 category=Web
 icon=icons/pudumaps-logo.png
-experimental=True
+experimental=False
 deprecated=False
 server=False
 hasProcessingProvider=no
 
 tags=pudumaps,chile,api,rest,cloud,geospatial,sync,collaboration
 
-changelog=0.8.7 (2026-08-19) — Fix: 48 issues de compatibilidad Qt6 detectados por plugins.qgis.org
+changelog=0.9.0 (2026-08-20) — Primera version estable: el plugin sale de "experimental"
+  * El plugin deja de estar marcado como experimental. Pasa a aparecer en
+    el repositorio oficial de QGIS sin necesidad de activar "Mostrar
+    tambien complementos experimentales" en el Administrador de
+    Complementos.
+  * Sin cambios funcionales respecto de 0.8.7: mismo codigo, mismos 164
+    tests en verde, bandit y ruff limpios. El salto de version marca el
+    cambio de estado de publicacion, no una funcionalidad nueva.
+  * Alcance verificado: pull de proyectos y capas — incluidas capas
+    externas WMS/ArcGIS del catalogo Capas Oficiales de Chile — contra
+    datos reales. Push y sync bidireccional funcionan pero acumulan menos
+    horas de vuelo; ante un conflicto el plugin nunca sobrescribe solo,
+    siempre pregunta que lado gana.
+
+ 0.8.7 (2026-08-19) — Fix: 48 issues de compatibilidad Qt6 detectados por plugins.qgis.org
   * BUG REPORTADO al subir v0.8.6: security scan pasó, pero el check de
     compatibilidad Qt6 marcó 48 issues en 8 archivos — enums de PyQt5
     sin calificar (ej. QMessageBox.Yes en vez de
