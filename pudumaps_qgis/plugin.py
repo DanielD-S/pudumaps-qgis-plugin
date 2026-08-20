@@ -62,7 +62,7 @@ class PudumapsPlugin:
         self.iface.addCustomActionForLayerType(
             self._context_action,
             "",  # no submenu — appears at top level of the context menu
-            QgsMapLayer.VectorLayer,
+            QgsMapLayer.LayerType.VectorLayer,
             True,  # all vector layers
         )
 
@@ -85,7 +85,7 @@ class PudumapsPlugin:
         from .dialogs.settings_dialog import SettingsDialog
 
         dlg = SettingsDialog(self.iface.mainWindow())
-        dlg.exec_()
+        dlg.exec()
 
     def _open_projects(self) -> None:
         from .api_client import PudumapsClient
@@ -114,7 +114,7 @@ class PudumapsPlugin:
             return
 
         dlg = ProjectsDialog(client, self.iface.mainWindow())
-        dlg.exec_()
+        dlg.exec()
 
     def _upload_active_layer(self) -> None:
         """Invoked from the menu/toolbar — uses the currently active layer."""
@@ -181,7 +181,7 @@ class PudumapsPlugin:
             return
 
         dlg = UploadLayerDialog(client, layer, self.iface.mainWindow())
-        dlg.exec_()
+        dlg.exec()
 
     def _sync_current(self) -> None:
         """Sync the Pudumaps project referenced by the active layer (or
@@ -240,7 +240,7 @@ class PudumapsPlugin:
 
         dlg = SyncDialog(client, project_id, project_name or "(sin nombre)",
                          self.iface.mainWindow())
-        dlg.exec_()
+        dlg.exec()
 
     # ── Helpers ──────────────────────────────────────────────────────────
 

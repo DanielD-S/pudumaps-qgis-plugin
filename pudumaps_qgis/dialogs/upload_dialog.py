@@ -65,13 +65,13 @@ class UploadLayerDialog(QDialog):
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         # Buttons
         self.buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        self.upload_btn = self.buttons.button(QDialogButtonBox.Ok)
+        self.upload_btn = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         self.upload_btn.setText(
             "Actualizar en Pudumaps" if self.existing_remote_id else "Subir a Pudumaps"
         )

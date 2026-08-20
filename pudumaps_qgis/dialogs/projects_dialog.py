@@ -37,12 +37,14 @@ class ProjectsDialog(QDialog):
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Nombre", "Descripción", "Creado"])
-        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.doubleClicked.connect(self._open_selected)
 
         self.refresh_btn = QPushButton("Actualizar")
@@ -50,7 +52,7 @@ class ProjectsDialog(QDialog):
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -58,10 +60,12 @@ class ProjectsDialog(QDialog):
 
         self.buttons = QDialogButtonBox()
         self.open_btn = self.buttons.addButton(
-            "Abrir proyecto", QDialogButtonBox.AcceptRole
+            "Abrir proyecto", QDialogButtonBox.ButtonRole.AcceptRole
         )
         self.open_btn.clicked.connect(self._open_selected)
-        self.buttons.addButton(QDialogButtonBox.Close).clicked.connect(self.reject)
+        self.buttons.addButton(QDialogButtonBox.StandardButton.Close).clicked.connect(
+            self.reject
+        )
 
         layout = QVBoxLayout()
         layout.addWidget(
@@ -139,9 +143,9 @@ class ProjectsDialog(QDialog):
                 "Pudumaps",
                 f'El proyecto "{project.name}" no tiene capas todavía. '
                 "¿Abrirlo igual (crea un grupo vacío)?",
-                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
-            if ans != QMessageBox.Yes:
+            if ans != QMessageBox.StandardButton.Yes:
                 return
 
         self.progress.setVisible(True)
