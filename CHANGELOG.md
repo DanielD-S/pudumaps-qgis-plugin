@@ -31,6 +31,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 7 tests para `normalize_base_url`, incluido un guardarraíl que falla si
   alguien vuelve a poner una URL de Supabase como default.
 
+### Verificado en un Qt real
+Al contrario de lo que decían las notas de 0.8.7 en adelante, **sí hay QGIS
+instalado** en el entorno de desarrollo (3.40.9, Qt 5.15.13 / PyQt 5.15.11).
+El diálogo se renderizó fuera de pantalla con el Python de QGIS, en los tres
+casos: instalación limpia, instalación migrada desde la URL de Supabase, y
+URL personalizada. Eso destapó tres defectos que el código no mostraba:
+
+1. **Campos desalineados.** Con la fila Base URL en su propio `QFormLayout`,
+   cada layout calculaba su propia columna de etiquetas y los dos campos no
+   coincidían — "API Key:" y "Base URL:" no miden lo mismo. Ahora comparten
+   un único `QFormLayout` y se oculta la fila entera, etiqueta incluida.
+2. **El diálogo no volvía a encoger.** Al replegar quedaba con el alto de la
+   versión desplegada (285 → 311 → 311). `adjustSize()` por sí solo no baja
+   de la altura ya alcanzada: hay que reactivar el layout y resetear el alto.
+   Ahora hace 285 → 311 → 285.
+3. **La casilla quedaba debajo del campo que abre**, lo que se lee al revés.
+   Pasó a ser una fila del propio formulario, entre API Key y Base URL.
+
 ## [0.9.1] — 2026-08-20
 
 ### Fixed
