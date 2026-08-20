@@ -27,7 +27,30 @@ import requests
 from ._version import get_version
 from .url_validator import validate_base_url
 
-DEFAULT_BASE_URL = "https://tyftyoexdxrjvxjbdyux.supabase.co/functions/v1/api-v1"
+DEFAULT_BASE_URL = "https://pudumaps.cl/api"
+
+# URLs que el plugin usó como default hasta v0.9.1, cuando apuntaba directo a
+# la Edge Function de Supabase. Siguen funcionando —el rewrite de pudumaps.cl
+# no las reemplaza, las envuelve— pero dejarlas guardadas ata cada instalación
+# a un proyecto Supabase concreto: si se migra, no hay forma de redirigir a los
+# usuarios. Por eso se normalizan al leer las credenciales.
+LEGACY_BASE_URLS = frozenset(
+    {
+        "https://tyftyoexdxrjvxjbdyux.supabase.co/functions/v1/api-v1",
+        "https://tyftyoexdxrjvxjbdyux.functions.supabase.co/api-v1",
+    }
+)
+
+
+def normalize_base_url(url: str) -> str:
+    """Mapea las URLs default históricas al default actual.
+
+    Una URL personalizada (dev, self-host) se devuelve intacta: solo se
+    reescriben las que el propio plugin puso ahí en versiones anteriores.
+    """
+    if not url:
+        return DEFAULT_BASE_URL
+    return DEFAULT_BASE_URL if url.strip().rstrip("/") in LEGACY_BASE_URLS else url
 USER_AGENT = f"pudumaps-qgis/{get_version()}"
 DEFAULT_TIMEOUT = 20  # seconds
 
