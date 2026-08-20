@@ -13,7 +13,7 @@ from typing import NamedTuple
 from qgis.core import QgsApplication, QgsAuthMethodConfig
 from qgis.PyQt.QtCore import QSettings
 
-from .api_client import DEFAULT_BASE_URL
+from .api_client import DEFAULT_BASE_URL, normalize_base_url
 
 AUTH_CONFIG_NAME = "pudumaps-api"
 SETTINGS_GROUP = "pudumaps"
@@ -101,7 +101,7 @@ def load_credentials() -> ApiCreds | None:
         if _auth_manager().loadAuthenticationConfig(auth_id, cfg, True):
             cfg_map = cfg.configMap()
             key = cfg_map.get("password") or ""
-            url = cfg_map.get("realm") or DEFAULT_BASE_URL
+            url = normalize_base_url(cfg_map.get("realm") or DEFAULT_BASE_URL)
             if key:
                 return ApiCreds(api_key=key, base_url=url)
 
@@ -172,7 +172,7 @@ def _wipe_plain() -> None:
 def _load_plain() -> ApiCreds | None:
     s = QSettings()
     key = s.value(f"{SETTINGS_GROUP}/api_key", "", type=str)
-    url = s.value(f"{SETTINGS_GROUP}/base_url", DEFAULT_BASE_URL, type=str)
+    url = normalize_base_url(s.value(f"{SETTINGS_GROUP}/base_url", DEFAULT_BASE_URL, type=str))
     if not key:
         return None
     return ApiCreds(api_key=key, base_url=url)

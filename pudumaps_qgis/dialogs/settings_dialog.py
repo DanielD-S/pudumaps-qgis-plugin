@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -17,6 +18,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from ..api_client import DEFAULT_BASE_URL, PudumapsClient, PudumapsError
@@ -48,6 +50,20 @@ class SettingsDialog(QDialog):
         self.base_url_edit = QLineEdit()
         self.base_url_edit.setPlaceholderText(DEFAULT_BASE_URL)
 
+        # La URL base solo le importa a quien apunta a un entorno propio
+        # (dev, self-host). Para todo el resto es ruido, y además exponía el
+        # endpoint interno en la cara del usuario. Va oculta tras "Avanzado",
+        # y se abre sola si la URL guardada no es la default — para que nadie
+        # se quede con una URL personalizada activa sin verla.
+        self.advanced_check = QCheckBox("Avanzado: usar otra URL de la API")
+        self.advanced_check.toggled.connect(self._toggle_advanced)
+
+        self.advanced_box = QWidget()
+        advanced_form = QFormLayout(self.advanced_box)
+        advanced_form.setContentsMargins(0, 0, 0, 0)
+        advanced_form.addRow("Base URL:", self.base_url_edit)
+        self.advanced_box.setVisible(False)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
         self.status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -67,7 +83,6 @@ class SettingsDialog(QDialog):
         # Layout
         form = QFormLayout()
         form.addRow("API Key:", self.api_key_edit)
-        form.addRow("Base URL:", self.base_url_edit)
 
         btn_row = QHBoxLayout()
         btn_row.addWidget(self.test_btn)
@@ -91,6 +106,8 @@ class SettingsDialog(QDialog):
         )
         main.addWidget(separator())
         main.addLayout(form)
+        main.addWidget(self.advanced_check)
+        main.addWidget(self.advanced_box)
         main.addLayout(btn_row)
         main.addWidget(self.status_label)
         main.addStretch()
@@ -102,6 +119,10 @@ class SettingsDialog(QDialog):
 
     # ── Logic ────────────────────────────────────────────────────────────
 
+    def _toggle_advanced(self, checked: bool) -> None:
+        self.advanced_box.setVisible(checked)
+        self.adjustSize()
+
     def _load_existing(self) -> None:
         creds = load_credentials()
         if creds:
@@ -109,6 +130,12 @@ class SettingsDialog(QDialog):
             self.base_url_edit.setText(creds.base_url)
         else:
             self.base_url_edit.setText(DEFAULT_BASE_URL)
+
+        # Si quedó una URL personalizada guardada, mostrarla en vez de
+        # esconderla: es información que el usuario necesita para entender
+        # contra qué está hablando el plugin.
+        if self.base_url_edit.text().strip().rstrip("/") != DEFAULT_BASE_URL:
+            self.advanced_check.setChecked(True)
 
     def _current_creds(self) -> tuple[str, str]:
         api_key = self.api_key_edit.text().strip()

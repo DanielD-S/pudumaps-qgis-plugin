@@ -9,8 +9,10 @@ import requests_mock  # noqa: F401  (fixture used via pytest plugin)
 
 from pudumaps_qgis.api_client import (
     DEFAULT_BASE_URL,
+    LEGACY_BASE_URLS,
     PudumapsClient,
     PudumapsError,
+    normalize_base_url,
 )
 
 
@@ -130,3 +132,43 @@ def test_delete_layer_returns_none(requests_mock):
     )
     # Should not raise
     make_client().delete_layer("abc")
+
+
+# ── normalize_base_url ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("legacy", sorted(LEGACY_BASE_URLS))
+def test_normalize_rewrites_every_legacy_default(legacy):
+    """Las URLs que el propio plugin puso en versiones viejas se migran."""
+    assert normalize_base_url(legacy) == DEFAULT_BASE_URL
+
+
+@pytest.mark.parametrize("legacy", sorted(LEGACY_BASE_URLS))
+def test_normalize_ignores_trailing_slash_and_whitespace(legacy):
+    assert normalize_base_url(f"  {legacy}/  ") == DEFAULT_BASE_URL
+
+
+def test_normalize_leaves_custom_url_untouched():
+    """Un entorno propio no se pisa: solo se reescriben los defaults viejos."""
+    custom = "https://api.midominio.cl/pudumaps"
+    assert normalize_base_url(custom) == custom
+
+
+def test_normalize_leaves_localhost_untouched():
+    assert normalize_base_url("http://localhost:54321/functions/v1/api-v1") == (
+        "http://localhost:54321/functions/v1/api-v1"
+    )
+
+
+def test_normalize_empty_falls_back_to_default():
+    assert normalize_base_url("") == DEFAULT_BASE_URL
+
+
+def test_normalize_is_idempotent():
+    assert normalize_base_url(DEFAULT_BASE_URL) == DEFAULT_BASE_URL
+
+
+def test_legacy_urls_are_not_the_current_default():
+    """Guardarraíl: si alguien vuelve a poner Supabase como default, esto avisa."""
+    assert DEFAULT_BASE_URL not in LEGACY_BASE_URLS
+    assert "supabase" not in DEFAULT_BASE_URL

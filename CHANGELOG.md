@@ -3,6 +3,34 @@
 All notable changes to this project will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.9.2] — 2026-08-20
+
+### Changed
+- **`DEFAULT_BASE_URL` pasa de la Edge Function de Supabase a
+  `https://pudumaps.cl/api`.** Un rewrite en Vercel
+  ([pudumaps#254](https://github.com/DanielD-S/pudumaps/pull/254)) proxea
+  `/api/v1/*` hacia la misma función. El endpoint de Supabase no se elimina:
+  sigue vivo y las instalaciones que lo tengan guardado siguen funcionando.
+
+  El motivo de fondo no es cosmético. Cada instalación guarda la URL en
+  `QSettings`/`QgsAuthManager`, así que mientras el default apunte a un
+  proyecto Supabase concreto, migrar de proyecto dejaría a todos los usuarios
+  apuntando al lugar equivocado sin forma de redirigirlos.
+- **Las instalaciones existentes se migran solas.** `normalize_base_url()`
+  reescribe las dos URLs que el plugin usó como default históricamente
+  (`*.supabase.co/functions/v1/api-v1` y `*.functions.supabase.co/api-v1`) al
+  default actual, en `auth.load_credentials()` — el único punto de lectura de
+  credenciales, así que cubre todos los caminos. Una URL personalizada (dev,
+  self-host, localhost) se devuelve intacta.
+- **El campo "Base URL" queda oculto tras una casilla "Avanzado".** Solo le
+  sirve a quien apunta a un entorno propio; para el resto era ruido y además
+  exponía el endpoint interno. Se abre automáticamente si la URL guardada no
+  es la default, para que nadie quede apuntando a otro lado sin verlo.
+
+### Added
+- 7 tests para `normalize_base_url`, incluido un guardarraíl que falla si
+  alguien vuelve a poner una URL de Supabase como default.
+
 ## [0.9.1] — 2026-08-20
 
 ### Fixed
