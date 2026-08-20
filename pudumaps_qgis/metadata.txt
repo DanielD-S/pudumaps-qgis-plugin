@@ -12,7 +12,7 @@ about[es]=Plugin oficial de Pudumaps para QGIS. Permite navegar tus proyectos, a
 
 tracker=https://github.com/DanielD-S/pudumaps-qgis-plugin/issues
 repository=https://github.com/DanielD-S/pudumaps-qgis-plugin
-homepage=https://pudumaps.cl
+homepage=https://pudumaps.cl/qgis
 
 category=Web
 icon=icons/pudumaps-logo.png
